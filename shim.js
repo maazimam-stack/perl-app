@@ -233,18 +233,37 @@
     const wrap = document.createElement("div"); wrap.className = "perl-gate perl-solid"; wrap.setAttribute("role", "dialog"); wrap.setAttribute("aria-modal", "true"); wrap.setAttribute("aria-labelledby", "perl-in-h");
     wrap.innerHTML = `<form class="perl-card" novalidate>
       <h2 id="perl-in-h">Sign in to Perl</h2>
-      <p>Your plan and your journal are private to you. Enter your email and we'll send you a sign-in link.</p>
+      <p>Your plan and your journal are private to you. Sign in with your email and a password, or get a link by email.</p>
       <label for="perl-email">Email</label><input id="perl-email" type="email" autocomplete="email" required>
+      <label for="perl-pass">Password <span class="perl-quiet">(leave blank to get an email link instead)</span></label><input id="perl-pass" type="password" autocomplete="current-password" minlength="8">
       <div class="perl-code" hidden><label for="perl-code">Paste the link from the email (or a 6-digit code)</label><input id="perl-code" autocomplete="one-time-code" spellcheck="false" placeholder="https://… or 123456"></div>
       <p class="perl-msg" role="status" aria-live="polite"></p>
-      <div class="perl-row"><button type="submit" class="perl-btn perl-primary">Email me a sign-in link</button></div></form>`;
+      <div class="perl-row"><button type="button" class="perl-btn perl-new" hidden>Create account</button><button type="submit" class="perl-btn perl-primary">Email me a sign-in link</button></div></form>`;
     document.body.append(wrap);
-    const form = wrap.querySelector("form"), msg = wrap.querySelector(".perl-msg"), btn = wrap.querySelector("button"), code = wrap.querySelector(".perl-code");
+    const form = wrap.querySelector("form"), msg = wrap.querySelector(".perl-msg"), btn = wrap.querySelector(".perl-primary"), code = wrap.querySelector(".perl-code");
+    const pass = wrap.querySelector("#perl-pass"), make = wrap.querySelector(".perl-new");
     let sent = false;
+    /* with a password typed, the form signs in (or creates the account) with no email at all */
+    pass.addEventListener("input", () => { if (sent) return; const p = !!pass.value; btn.textContent = p ? "Sign in" : "Email me a sign-in link"; make.hidden = !p; });
+    const emailOk = () => { const em = wrap.querySelector("#perl-email").value.trim(); if (!/^\S+@\S+\.\S+$/.test(em)) { msg.textContent = "Enter a valid email address."; return null; } return em; };
+    make.addEventListener("click", async () => {
+      const em = emailOk(); if (!em) return;
+      if (pass.value.length < 8) { msg.textContent = "Use a password of at least 8 characters."; pass.focus(); return; }
+      make.disabled = btn.disabled = true;
+      const { data, error } = await client.auth.signUp({ email: em, password: pass.value, options: { emailRedirectTo: location.origin + location.pathname } });
+      make.disabled = btn.disabled = false;
+      if (error) { msg.textContent = /already|registered/i.test(error.message || "") ? "That email already has an account. Tap Sign in." : (error.message || "Couldn't create the account. Try again."); return; }
+      if (!data || !data.session) msg.textContent = "Account created. Confirm it from the email Supabase sent, then come back and tap Sign in.";
+    });
     form.addEventListener("submit", async (e) => {
-      e.preventDefault(); const em = wrap.querySelector("#perl-email").value.trim();
-      if (!/^\S+@\S+\.\S+$/.test(em)) { msg.textContent = "Enter a valid email address."; return; }
+      e.preventDefault(); const em = emailOk(); if (!em) return;
       btn.disabled = true;
+      if (!sent && pass.value) {
+        const { error } = await client.auth.signInWithPassword({ email: em, password: pass.value });
+        btn.disabled = false;
+        if (error) msg.textContent = /confirm/i.test(error.message || "") ? "Confirm your email first, then sign in." : "Wrong email or password. New here? Tap Create account.";
+        return;
+      }
       if (!sent) {
         const { error } = await client.auth.signInWithOtp({ email: em, options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: true } });
         btn.disabled = false;
