@@ -109,7 +109,7 @@ async function readFile(file) {
 }
 
 /* ================= grounding: every claim must trace to the resume ================= */
-const norm = (s) => String(s || "").toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+const norm = (s) => String(s || "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 function grounder(text) {
   const nt = " " + norm(text) + " "; const toks = new Set(nt.split(" "));
   return (ev) => {
@@ -123,128 +123,216 @@ const TITLES = /^(dr|doctor|prof|professor|mr|mrs|ms|mx)\.?\s+/i;
 const CREDS = /,?\s+(md|m\.d\.|phd|ph\.d\.|do|mph|mba|ms|msc|rn|np|pa-c|facc|faha|frcpc)\b\.?/gi;
 const nkey = (name) => norm(String(name || "").replace(TITLES, "").replace(CREDS, ""));
 
-/* ================= quick read: a deterministic parser, no network ================= */
-const SECTION_RE = [
-  ["education", /^(education|academic background|training)/i],
-  ["research", /^(research|publications?|presentations?|abstracts?|posters?|peer[- ]reviewed|scholarly|manuscripts?)/i],
-  ["leadership", /^(leadership|organizations?|activities|extracurricular|professional (service|activities))/i],
-  ["clinical", /^(clinical|patient care|healthcare experience|clinical experience)/i],
-  ["teaching", /^(teaching|mentoring|tutoring|education experience)/i],
-  ["service", /^(volunteer|service|community|outreach)/i],
-  ["venture", /^(entrepreneur|ventures?|startups?|innovation|business|industry)/i],
-  ["awards", /^(awards?|honors?|honours?|scholarships?|grants?|distinctions?)/i],
-  ["experience", /^(experience|work|employment|professional experience|positions?)/i],
-  ["skills", /^(skills|languages|certifications?|technical)/i],
-  ["interests", /^(interests|hobbies|personal)/i]
-];
-const BULLET = /^[•▪◦‣\-–—*·●○]\s*/;
+/* ================= quick read: a deterministic parser, no network =================
+   PDF text arrives line-wrapped, so it is first unwrapped into units (headings, entry lines, whole bullets), then read
+   as CV entries: an organisation line, a role line with a date range, bullets beneath. */
 const MONTH = "(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?";
-const DATE_RE = new RegExp(`((?:${MONTH}\\s+)?(?:19|20)\\d{2}\\s*(?:[-–—]|to)\\s*(?:(?:${MONTH}\\s+)?(?:19|20)\\d{2}|present|current|now|ongoing)|(?:${MONTH}\\s+)?(?:19|20)\\d{2})`, "i");
-const ORG_RE = /\b((?:[A-Z][\w&.'’-]*\s+){0,5}(?:University|College|Hospital|Clinic|Institute|Center|Centre|Foundation|Association|Society|School|Laboratory|Lab|Program|Programme|Consortium|Network|Initiative|Capital|Ventures|Partners|Health|Fellowship)(?:\s+(?:of|for|at|&|and|in)\s+(?:[A-Z][\w&.'’-]*\s*){1,4})?)/g;
-const PERSON_RES = [
-  /\b(?:Dr|Prof|Professor)\.?\s+([A-Z][a-zA-Z'’-]+(?:\s+[A-Z]\.)?(?:\s+[A-Z][a-zA-Z'’-]+){0,2})/g,
-  /\b([A-Z][a-z'’-]+(?:\s+[A-Z]\.)?\s+[A-Z][a-zA-Z'’-]+),\s*(?:MD|M\.D\.|PhD|Ph\.D\.|DO|MPH)\b/g,
-  /\b(?:PI|Mentor|Advisor|Adviser|Supervisor|Preceptor|Principal Investigator)s?\s*[:\-–]\s*(?:Dr\.?\s*)?([A-Z][a-zA-Z'’-]+(?:\s+[A-Z]\.)?(?:\s+[A-Z][a-zA-Z'’-]+){1,2})/g
+const ONE = `(?:${MONTH}\\s+)?(?:\\d{1,2}/)?(?:19|20)\\d{2}`;
+const DATE_RE = new RegExp(`(${ONE}\\s*(?:[-–—]|to)\\s*(?:${ONE}|present|current|now|ongoing)|${ONE})`, "i");
+const TAIL_DATE = new RegExp(`\\s*(?:(?:expected|anticipated|submitted|accepted|published|in press)\\s+)?(?:${ONE}\\s*(?:[-–—]|to)\\s*(?:${ONE}|present|current|now|ongoing)|${ONE})\\s*$`, "i");
+const BULLET = /^[•▪◦‣\-–—*·●○]\s*/;
+const ORG_RE = /\b((?:[A-Z][\w&.'’-]*\s+){0,5}(?:University|College|Hospital|Clinic|Institute|Center|Centre|Foundation|Association|Society|School|Laboratory|Lab|Program|Programme|Consortium|Network|Initiative|Capital|Ventures|Partners|Health|Fellowship|Group|Council|Department|Agency|Institutes)(?:\s+(?:of|for|at|&|and|in)\s+(?:[A-Z][\w&.'’-]*\s*){1,4})?)/g;
+const HEADS = [
+  ["pubs", "research", /publications?|manuscripts?|peer[- ]reviewed/i],
+  ["abstracts", "research", /abstracts?|posters?|presentations?|proceedings|talks/i],
+  ["", "education", /education|academic background|training/i],
+  ["", "research", /research/i],
+  ["", "leadership", /leadership|organi[sz]ations?|activities|extracurricular/i],
+  ["", "clinical", /clinical|patient care/i],
+  ["", "teaching", /teaching|mentoring|tutoring/i],
+  ["", "service", /volunteer|service|community|outreach/i],
+  ["", "venture", /entrepreneur|ventures?|startups?|innovation|business|industry/i],
+  ["", "awards", /awards?|honou?rs|scholarships?|grants?|distinctions?/i],
+  ["", "experience", /experience|employment|work|positions?|appointments?/i],
+  ["", "skills", /skills|languages|certifications?|technical|coursework|courses/i],
+  ["", "interests", /interests|hobbies/i]
 ];
-const STRENGTHS = [
-  ["Research output", /publish|journal|manuscript|first author|co-first|abstract|poster|podium|presented|preprint|\bet al\b/i],
-  ["Leadership", /president|founder|founded|co-founded|chair|director|\blead\b|led\b|captain|board|executive/i],
-  ["Data and AI", /machine learning|artificial intelligence|\bAI\b|deep learning|\bLLM|python|\bR\b|statistic|data analys|natural language|algorithm/i],
-  ["Entrepreneurship", /startup|start-up|venture|entrepreneur|commercializ|patent|investor|fellows? program|accelerator|business/i],
-  ["Teaching and mentoring", /tutor|teach|teaching assistant|\bTA\b|instructor|mentor(ed|ing)? (students|undergrad)|curriculum/i],
-  ["Clinical exposure", /scribe|\bEMT\b|patient|clinic|hospital|shadow|bedside|medical assistant|\bCNA\b/i],
-  ["Community service", /volunteer|community|outreach|free clinic|underserved|health equity/i],
-  ["Recognition", /award|honor|scholar|selected|fellowship|grant|prize|dean'?s list|1 of \d+|one of \d+/i]
-];
-const THEMES = [
-  ["AI in medicine", /machine learning|artificial intelligence|\bAI\b|deep learning|\bLLM|large language/i],
-  ["Cardiovascular health", /cardi|heart|vascular/i],
-  ["Health policy", /policy|legislat|advocacy|public health|\bMPH\b/i],
-  ["Health equity", /equity|underserved|disparit|social determinants/i],
-  ["Global health", /global health|international|low-income countr/i],
-  ["Healthcare business", /venture|startup|entrepreneur|business|\bMBA\b|capital|commercializ/i],
-  ["Medical education", /curriculum|medical education|teaching|tutor/i],
-  ["Digital health", /wearable|digital health|mobile health|mhealth|telehealth|app\b/i],
-  ["Quality improvement", /quality improvement|\bQI\b|patient safety/i],
-  ["Population data", /cohort|registry|epidemiolog|population|biobank|All of Us/i]
-];
-const DISTINCT = /co-first|first author|selected|national|1 of \d+|one of \d+|founded|founder|award|grant|patent|president|chair|fellow|published in|invited|only\b/i;
-function kindOf(section, line) {
-  if (/venture|startup|founder|capital|entrepreneur|fellows? program/i.test(line)) return "venture";
-  if (/tutor|teach|instructor|\bTA\b/i.test(line)) return "teaching";
-  if (section === "research" || /research|lab\b|investigat/i.test(line)) return "research";
-  if (section === "leadership" || /president|chair|founder|director|lead/i.test(line)) return "leadership";
-  if (section === "clinical" || /scribe|\bEMT\b|clinic|hospital|patient/i.test(line)) return "clinical";
-  if (section === "teaching") return "teaching";
-  if (section === "service") return "service";
-  if (section === "venture") return "venture";
+const HEAD_FILL = /^(&|and|of|selected|published|peer-reviewed|professional|other|additional|relevant|related|academic|conference|and|honors|national|scientific)$/i;
+const LABEL = /^[A-Z][\w &/()'’-]{1,40}:\s/;
+const CONNECT = /(,|&|-|–|\/|\b(and|or|of|the|in|for|with|to|from|on|at|a|an|by|as|into|across|over|under|including|between|among))$/i;
+function headerOf(line) {
+  if (BULLET.test(line)) return null;
+  const h = line.replace(/[:\s]+$/, "");
+  if (!h || h.length > 60 || TAIL_DATE.test(h) || /[.,;]$/.test(h)) return null;
+  const caps = h === h.toUpperCase() && /[A-Z]{3}/.test(h);
+  if (!caps && (h.includes(":") || h.split(" ").length > 4 || !h.split(/\s+/).every((w) => HEAD_FILL.test(w) || HEADS.some(([, , re]) => re.test(w))))) return null;
+  for (const [sub, cat, re] of HEADS) if (re.test(h)) return { cat, sub };
+  return null;
+}
+function splitDate(line) {
+  const m = TAIL_DATE.exec(line);
+  if (m && m.index > 0) return { text: line.slice(0, m.index).trim().replace(/\s*[,|–—-]\s*$/, ""), date: m[0].trim() };
+  return { text: line, date: "" };
+}
+const orgHeading = (l) => { if (/[.,;:]$/.test(l) || l.split(" ").length < 3) return false; const m = l.match(ORG_RE); return !!m && m[0].length >= l.length * 0.6; };
+function canJoin(prev, t) {
+  const p = prev.t;
+  if (prev.head || /[.!?;:]$/.test(p) || splitDate(p).date) return false;
+  if (splitDate(t).date || LABEL.test(t) || orgHeading(t)) return false;
+  if (/^[a-z(]/.test(t) || CONNECT.test(p)) return true;
+  return prev.bullet && p.length >= 55;
+}
+function unwrap(text) {
+  const out = [];
+  for (const raw of String(text).split(/\r?\n/)) {
+    const l = raw.replace(/\s+/g, " ").trim(); if (!l) continue;
+    const head = headerOf(l); const bullet = !head && BULLET.test(l); const t = l.replace(BULLET, "");
+    const prev = out[out.length - 1];
+    if (prev && !head && !bullet && canJoin(prev, t)) { prev.t = /\w-$/.test(prev.t) && /^[a-z]/.test(t) ? prev.t.slice(0, -1) + t : prev.t + " " + t; continue; }
+    out.push({ t, bullet, head });
+  }
+  return out;
+}
+function makeEntry(group, lastOrg, whole) {
+  const isLab = (l) => !whole && LABEL.test(l); /* in publication lists "Poster: ..." is an item, not a label */
+  const labels = group.filter(isLab);
+  let dates = "";
+  const parts = group.filter((l) => !isLab(l)).map((l) => { const d = splitDate(l); if (d.date && !dates) dates = d.date; return d.text; }).filter(Boolean);
+  let org = "", role = "";
+  if (parts.length === 1 && whole) role = parts[0];
+  else if (parts.length === 1) {
+    const pieces = parts[0].split(/\s+[|–—]\s+|,\s+(?=[A-Z])|\s+at\s+/).map((x) => x.trim()).filter(Boolean);
+    const oi = pieces.findIndex((x) => { const m = x.match(ORG_RE); return m && m[0].length >= x.length * 0.5; });
+    if (pieces.length > 1 && oi >= 0) { org = pieces[oi]; role = pieces.filter((_, i) => i !== oi).join(", "); }
+    else if (orgHeading(parts[0]) && !dates) org = parts[0];
+    else { role = parts[0]; org = lastOrg; }
+  } else if (parts.length > 1) { org = parts[0]; role = parts.slice(1).join(", "); }
+  return { org: clip(org, 90), role: clip(role, 110), dates: clip(dates, 40), bullets: [], labels };
+}
+function structure(text) {
+  const items = unwrap(text);
+  const self = items.length ? nkey(items[0].t) : "";
+  const secs = []; let cur = { cat: "top", sub: "", entries: [] }; secs.push(cur);
+  let lastOrg = "", group = [], entry = null;
+  const flush = () => { if (!group.length) return; entry = makeEntry(group, lastOrg, !!cur.sub); if (entry.org) lastOrg = entry.org; cur.entries.push(entry); group = []; };
+  items.forEach((it, i) => {
+    if (i === 0 && !it.head) return; /* the student's name */
+    if (it.head) { flush(); entry = null; lastOrg = ""; cur = { cat: it.head.cat, sub: it.head.sub, entries: [] }; secs.push(cur); return; }
+    if (it.bullet) { flush(); if (!entry) { entry = { org: lastOrg, role: "", dates: "", bullets: [], labels: [] }; cur.entries.push(entry); } entry.bullets.push(it.t); return; }
+    if (!cur.sub && LABEL.test(it.t) && !group.length && entry && !entry.bullets.length) { entry.labels.push(it.t); return; }
+    if (entry && entry.bullets.length) entry = null;
+    const dated = !!splitDate(it.t).date;
+    if (group.length && ((dated && group.some((g) => splitDate(g).date)) || (cur.sub && it.t.length > 40 && group[group.length - 1].length > 40))) { flush(); entry = null; }
+    if (group.length && !dated && !LABEL.test(it.t) && group.some((g) => splitDate(g).date) && group.filter((g) => !LABEL.test(g)).length >= 2) { flush(); entry = null; }
+    group.push(it.t);
+  });
+  flush();
+  return { self, secs };
+}
+const LEAD_RE = /president|chair|director|founder|board member|\blead(er)?\b|captain|\bhead\b|editor|officer|vice|chief|coordinator/i;
+function kindOf(cat, e) {
+  const r = `${e.role} ${e.org}`; const all = r + " " + e.bullets.join(" ");
+  if (/founder|start-?up|venture|commerciali[sz]|consultant|incubat/i.test(r)) return "venture";
+  if (LEAD_RE.test(e.role)) return "leadership";
+  if (/research|fellow|investigat|scientist|\blab\b|registry|laborator/i.test(r)) return "research";
+  if (/tutor|teach|instructor|\bTA\b/i.test(r)) return "teaching";
+  if (/scribe|\bEMT\b|medical assistant|\bCNA\b|patient care|clinic|hospital|emergency department/i.test(r) && cat !== "research") return cat === "service" || /volunteer/i.test(r) ? "service" : "clinical";
+  if (/volunteer/i.test(r) || cat === "service") return "service";
+  if (["research", "leadership", "clinical", "teaching", "venture"].includes(cat)) return cat;
+  if (/venture|startup|business|investment/i.test(all)) return "venture";
   return "other";
 }
+const EXP_CATS = ["research", "leadership", "clinical", "teaching", "service", "venture", "experience", "top"];
+const isExp = (s) => EXP_CATS.includes(s.cat) && !s.sub;
+const nItems = (s) => s.entries.reduce((n, e) => n + (e.bullets.length || (e.role || e.org ? 1 : 0)), 0);
+const DOMAINS = [["cardiovascular", /cardi|heart|atheroscler|coronary|pulmonary embol|arrhythm|vascular|\bECG\b|\bEKG\b/i], ["cancer", /cancer|oncolog|tumou?r|prostate|leukemi|lymphom/i], ["mental health", /mental health|psychiat|suicid|depress|anxiety|behavioral health/i], ["health equity", /equity|underserved|disparit|social (drivers|determinants|vulnerab)|underrepresented/i], ["pediatric", /pediatr|paediatr|child|neonat/i], ["surgical", /surg|operative/i], ["neurology", /neuro|stroke|alzheimer|dementia/i], ["global health", /global health|low-income countr/i]];
+const METHODS = [["AI", /\bAI\b|artificial intelligence|machine learning|deep learning|\bLLMs?\b|neural network|predictive model|prediction model|computer vision/i], ["data science", /data (science|analysis)|database|registry|\bEHR|cohort|big data|epidemiolog/i], ["digital health", /wearable|fitbit|digital health|mobile health|chatbot|telehealth/i], ["precision medicine", /precision (medicine|health)/i]];
+const ACTS = [["leadership", (u) => u.role && LEAD_RE.test(u.text) && !/founder/i.test(u.text)], ["venture building", (u) => /founder|start-?up|venture|commerciali[sz]|incubat|pitch deck|business plan|investment analysis/i.test(u.text)], ["teaching", (u) => /tutor|teach|instructor|\bmentor(ing|ed)\b/i.test(u.text)], ["clinical work", (u) => /scribe|\bEMT\b|medical assistant|\bCNA\b|patient care|bedside/i.test(u.text)], ["community service", (u) => u.cat === "service" || /volunteer|free clinic|food bank|shelter/i.test(u.text)], ["policy work", (u) => /policy|advocacy|legislat/i.test(u.text)]];
+const cap1 = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const andList = (a) => (a.length <= 1 ? a.join("") : a.slice(0, -1).join(", ") + " and " + a[a.length - 1]);
+const DISTINCT = [[/\b(1|one) of \d+/i, 4], [/\bnational(ly)?\b|\binternational(ly)?\b/i, 1], [/\bselected\b|\binvited\b|\bnamed\b/i, 1], [/award|scholarship|prize|honou?r|first author|co-first|first-author/i, 3], [/\bfounded|\bco-founded/i, 2], [/\$[\d,.]+\s*(k|m|million|billion)?|\b\d{1,3}(,\d{3})+\+?|\b\d+\+? (sites|patients|members|students|countries|participants)/i, 1], [/published|co-author/i, 1]];
 function quickRead(text) {
-  const lines = text.split(/\r?\n/).map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean);
-  const self = nkey(lines[0] || "");
-  let sec = "top"; const tagged = [];
-  for (const raw of lines) {
-    const head = raw.replace(/[:\s]+$/, "");
-    const hit = head.length <= 48 && !DATE_RE.test(head) ? SECTION_RE.find(([, re]) => re.test(head)) : null;
-    if (hit) { sec = hit[0]; continue; }
-    tagged.push({ sec, line: raw.replace(BULLET, ""), bullet: BULLET.test(raw) });
+  const { self, secs } = structure(text);
+  const units = [];
+  for (const s of secs) {
+    if (["skills", "interests"].includes(s.cat)) continue;
+    for (const e of s.entries) {
+      if (e.role || e.org) units.push({ text: [e.role, e.org].filter(Boolean).join(", "), role: true, cat: s.cat, sub: s.sub, e });
+      for (const b of e.bullets) units.push({ text: b, cat: s.cat, sub: s.sub, e });
+      for (const l of e.labels) units.push({ text: l, label: true, cat: s.cat, sub: s.sub, e });
+    }
   }
-  /* entries: a non-bullet line starts one, bullets attach to it */
-  const entries = [];
-  for (const t of tagged) {
-    if (!t.bullet || !entries.length || entries[entries.length - 1].sec !== t.sec) entries.push({ sec: t.sec, head: t.line, lines: [t.line] });
-    else entries[entries.length - 1].lines.push(t.line);
-  }
-  const body = (e) => e.lines.join(" ");
-  /* experiences */
+  const content = units.filter((u) => u.cat !== "education" && !u.label);
+  /* experiences: one per entry block, never a fragment */
   const experiences = [];
-  for (const e of entries) {
-    if (!["research", "leadership", "clinical", "teaching", "service", "venture", "experience"].includes(e.sec)) continue;
-    const d = DATE_RE.exec(e.head);
-    if (/\bet al\b|journal|\d{4};\d|\bdoi\b|^[A-Z][a-z'’-]+ [A-Z]{1,2}[,.]|^(poster|podium|oral|presentation|abstract)\b/i.test(e.head)) continue; /* citations aren't experiences */
-    const head = e.head.replace(DATE_RE, "").replace(/[|,–—-]\s*$/, "").trim();
-    const parts = head.split(/\s+[|–—]\s+|,\s+|\s+-\s+|\s+at\s+/).map((x) => x.trim()).filter(Boolean);
-    if (!parts.length) continue;
-    const orgM = head.match(ORG_RE);
-    experiences.push({ title: clip(parts[0], 90), org: clip(orgM ? orgM[0] : parts.slice(1).join(", "), 90), dates: d ? clip(d[0], 40) : "", kind: kindOf(e.sec, body(e)), evidence: clip(e.head, 200) });
+  for (const s of secs) if (isExp(s)) for (const e of s.entries) {
+    const title = e.role || e.org; if (!title || !/[A-Za-z]{2}/.test(title) || /^[a-z]/.test(title) || (/\.$/.test(title) && title.split(" ").length <= 3)) continue;
+    experiences.push({ title: clip(title, 90), org: e.role ? clip(e.org, 90) : "", dates: e.dates, kind: kindOf(s.cat, e), evidence: clip([e.role, e.org].filter(Boolean).join(", "), 200) });
   }
+  /* publications */
+  const pubSecs = secs.filter((s) => s.sub === "pubs"); const absSecs = secs.filter((s) => s.sub === "abstracts");
+  const pubN = pubSecs.reduce((n, s) => n + nItems(s), 0); const absN = absSecs.reduce((n, s) => n + nItems(s), 0);
+  const pubEntries = pubSecs.flatMap((s) => s.entries).filter((e) => e.bullets.length && (e.role || e.org));
+  const outlets = [...new Set(pubEntries.filter((e) => !/submitted|review/i.test(e.dates)).map((e) => e.role || e.org))];
   /* people */
   const people = new Map();
-  for (const e of entries) {
-    const ctx = body(e);
-    for (const re of PERSON_RES) for (const m of ctx.matchAll(re)) {
-      const name = m[1].replace(/\s+(?:MD|PhD|DO)$/, "").trim(); const k = nkey(name);
-      if (!k || k === self || k.split(" ").length < 2 || people.has(k)) continue;
-      const near = ctx.slice(Math.max(0, m.index - 80), m.index + m[0].length + 80);
-      const relation = /mentor|advis|preceptor/i.test(near) ? "mentor" : /\bPI\b|principal investigator|lab\b|under\b|laboratory|supervis/i.test(near) || e.sec === "research" ? "PI" : "collaborator";
-      const orgM = e.head.match(ORG_RE) || ctx.match(ORG_RE);
-      people.set(k, { name: (/^(Dr|Prof)/i.test(m[0]) ? "Dr. " : "") + name, role: clip(e.head.replace(DATE_RE, "").split(/\s+[|–—]\s+|,\s+/)[0], 70), org: clip(orgM ? orgM[0] : "", 80), relation, specialties: specsIn(ctx), evidence: clip(m[0].length > 30 ? m[0] : near, 200) });
-    }
+  const PERSON_RES = [
+    /\b(?:Dr|Prof|Professor)\.?\s+([A-Z][a-zA-Z'’-]+(?:\s+[A-Z]\.)?(?:\s+[A-Z][a-zA-Z'’-]+){0,2})/g,
+    /\b([A-Z][a-z'’-]+(?:\s+[A-Z]\.)?\s+[A-Z][a-zA-Z'’-]+),\s*(?:MD|M\.D\.|PhD|Ph\.D\.|DO|MPH)\b/g,
+    /\b(?:PI|Mentor|Advisor|Adviser|Supervisor|Preceptor|Principal Investigator)s?\s*[:\-–]\s*(?:Dr\.?\s*)?([A-Z][a-zA-Z'’-]+(?:\s+[A-Z]\.)?(?:\s+[A-Z][a-zA-Z'’-]+){1,2})/g
+  ];
+  for (const u of units) for (const re of PERSON_RES) for (const m of u.text.matchAll(re)) {
+    const name = m[1].trim(); const k = nkey(name);
+    if (!k || k === self || k.split(" ").length < 2 || people.has(k)) continue;
+    const ctx = [u.e.role, u.e.org, ...u.e.bullets].join(" ");
+    const near = u.text.slice(Math.max(0, m.index - 80), m.index + m[0].length + 80);
+    const relation = /mentor|advis|preceptor/i.test(near) ? "mentor" : /\bPI\b|principal investigator|\blab\b|under\b|laborator|supervis/i.test(near) || u.cat === "research" ? "PI" : "collaborator";
+    people.set(k, { name: (/^(Dr|Prof)/i.test(m[0]) ? "Dr. " : "") + name, role: clip(u.e.role, 70), org: clip(u.e.org, 80), relation, specialties: specsIn(ctx), evidence: clip(near, 200) });
   }
-  /* organisations and programs */
+  /* organisations and programs the student belongs to */
   const orgs = new Map();
-  for (const e of entries) {
-    if (["skills", "interests"].includes(e.sec)) continue;
-    for (const m of e.head.matchAll(ORG_RE)) {
-      const name = m[1].trim().replace(/\s+(of|for|at|and|in|&)$/i, ""); const k = norm(name);
-      if (name.split(" ").length < 2 || orgs.has(k)) continue;
-      const ctx = body(e);
-      orgs.set(k, { name: clip(name, 80), role: clip(e.head.replace(DATE_RE, "").split(/\s+[|–—]\s+|,\s+/)[0], 70), org: "", relation: /fellow|program|scholar|cohort|accelerator/i.test(ctx) ? "program" : "organization", specialties: specsIn(ctx), evidence: clip(e.head, 200) });
-    }
+  for (const s of secs) if (isExp(s) || s.cat === "education") for (const e of s.entries) {
+    const name = (e.org || "").replace(/\s+\((formerly|fka)[^)]*\)/i, "").trim(); const k = norm(name);
+    if (!name || name.length < 3 || orgs.has(k) || people.has(nkey(name))) continue;
+    const ctx = [e.role, e.org, ...e.bullets].join(" ");
+    orgs.set(k, { name: clip(name, 80), role: clip(e.role, 70), org: "", relation: /fellow|program|scholar|cohort|accelerator/i.test(e.role + " " + e.org) ? "program" : "organization", specialties: s.cat === "education" ? [] : specsIn(ctx), evidence: clip([e.role, e.org].filter(Boolean).join(", "), 200) });
   }
-  /* strengths, interests, themes */
-  const all = tagged.map((t) => t.line);
-  const strengths = STRENGTHS.map(([name, re]) => { const hits = all.filter((l) => re.test(l)); return { name, n: hits.length, evidence: clip(hits[0] || "", 200) }; })
+  /* strengths: each one shown with a line that actually supports it */
+  const roleOf = (u) => u.role && u.e.role ? [u.e.role, u.e.org].filter(Boolean).join(", ") : u.text;
+  const S = [
+    ["Research output", () => content.filter((u) => (u.sub === "pubs" || u.sub === "abstracts") && !u.role).concat(content.filter((u) => u.role && kindOf(u.cat, u.e) === "research"))],
+    ["Leadership", () => content.filter((u) => (u.role && LEAD_RE.test(u.e.role || "")) || (!u.role && /^(led|leading|founded|chaired|directed|organi[sz]ed)\b/i.test(u.text)))],
+    ["Data and AI", () => content.filter((u) => !u.role && /\bAI\b|artificial intelligence|machine learning|deep learning|\bLLM|predict(ion|ive) model|data analys|statistic|python|algorithm/i.test(u.text))],
+    ["Entrepreneurship", () => content.filter((u) => /founder|start-?up|venture|commerciali[sz]|business plan|pitch deck|investment|incubat|\bVC\b/i.test(u.text))],
+    ["Teaching and mentoring", () => content.filter((u) => /\btutor|\bteach|instructor|\bmentor(ing|ed)\b|teaching assistant/i.test(u.text))],
+    ["Clinical exposure", () => content.filter((u) => /scribe|\bEMT\b|medical assistant|\bCNA\b|patient care|bedside|shadow(ed|ing)|clinical volunteer/i.test(u.text))],
+    ["Community service", () => content.filter((u) => u.cat === "service" || /\bvolunteer|free clinic|food bank|shelter|outreach event/i.test(u.text))],
+    ["Recognition", () => units.filter((u) => /award|scholarship|prize|dean'?s list|selected as|\b1 of \d+|honou?rs/i.test(u.text))]
+  ];
+  const PREFER = { "Data and AI": (u) => /\bAI\b|artificial intelligence|machine learning|\bLLM|predict(ion|ive) model/i.test(u.text), Entrepreneurship: (u) => u.role && /founder/i.test(u.text), Leadership: (u) => u.role, "Research output": (u) => u.sub === "pubs", Recognition: (u) => /award|scholarship|prize|dean.?s list|selected as|\b1 of \d+/i.test(u.text) };
+  const strengths = S.map(([name, f]) => { const hits = f(); const best = (PREFER[name] && hits.find(PREFER[name])) || hits[0]; return { name, n: hits.length, evidence: best ? clip(roleOf(best), 200) : "" }; })
     .filter((x) => x.n).sort((a, b) => b.n - a.n).slice(0, 5).map(({ name, evidence }) => ({ name, evidence }));
-  const specHits = SPECS.map((s) => { const hits = all.filter((l) => s.kw.test(l)); return { s, hits }; }).filter((x) => x.hits.length).sort((a, b) => b.hits.length - a.hits.length);
-  const interestLines = tagged.filter((t) => t.sec === "interests").flatMap((t) => t.line.split(/[,;]\s*/)).filter((x) => x.length > 2 && x.length < 50).slice(0, 3);
-  const interests = [...specHits.slice(0, 3).map(({ s, hits }) => ({ name: s.n, evidence: clip(hits[0], 200) })), ...interestLines.map((x) => ({ name: clip(x, 40), evidence: x }))];
-  const themes = THEMES.map(([name, re]) => [name, all.filter((l) => re.test(l)).length]).filter((x) => x[1]).sort((a, b) => b[1] - a[1]).slice(0, 5).map((x) => x[0]);
-  const unique = [...new Set(all.filter((l) => DISTINCT.test(l) && l.length > 24))].slice(0, 4).map((l) => ({ text: clip(l, 180), evidence: clip(l, 200) }));
-  const headline = strengths.length ? `${strengths.slice(0, 2).map((s) => s.name).join(" and ")}${themes.length ? `, centred on ${themes.slice(0, 2).join(" and ").toLowerCase()}` : ""}.` : "Not enough structure to summarise. Try pasting the text with its section headings.";
-  const specialtyFit = specHits.slice(0, 5).map(({ s, hits }) => ({ specialty: s.n, why: `${hits.length} line${hits.length === 1 ? "" : "s"} in your resume point here.`, signals: hits.slice(0, 3).map((h) => clip(h, 160)), gaps: [] }));
-  return { profile: { headline, unique, strengths, interests, themes, experiences: experiences.slice(0, 15), specialtyFit }, network: [...people.values(), ...orgs.values()].slice(0, 30) };
+  /* interests */
+  const specHits = SPECS.map((s) => ({ s, hits: content.filter((u) => s.kw.test(u.text)) })).filter((x) => x.hits.length).sort((a, b) => b.hits.length - a.hits.length);
+  const interestLines = secs.filter((s) => s.cat === "interests").flatMap((s) => s.entries.flatMap((e) => [e.role, ...e.bullets])).flatMap((x) => String(x || "").split(/[,;]\s*/)).filter((x) => x.length > 2 && x.length < 50).slice(0, 3);
+  const interests = [...specHits.slice(0, 3).map(({ s, hits }) => ({ name: s.n, evidence: clip(hits[0].text, 200) })), ...interestLines.map((x) => ({ name: clip(x, 40), evidence: x }))];
+  /* themes and headline: plain words from what the resume is about */
+  const tally = (list, w = {}) => list.map(([n, re]) => [n, content.filter((u) => re.test(u.text)).length * (w[n] || 1)]).filter((x) => x[1]).sort((a, b) => b[1] - a[1]);
+  const doms = tally(DOMAINS), meths = tally(METHODS, { AI: 2 }); /* the distinctive method outranks generic data work */
+  const acts = ACTS.map(([n, f]) => [n, content.filter(f).length]).filter((x) => x[1]).sort((a, b) => b[1] - a[1]);
+  const researchy = pubN + absN + experiences.filter((e) => e.kind === "research").length >= 2;
+  const topic = [doms[0] && doms[0][0], meths[0] && meths[0][0]].filter(Boolean).join(" ");
+  const actWords = acts.slice(0, 2).map((x) => x[0]);
+  const headline = researchy ? cap1(`${topic ? topic + " " : ""}research${actWords.length ? `, ${andList(actWords)}` : ""}`)
+    : actWords.length ? cap1(`${andList(actWords)}${topic ? ` in ${topic}` : ""}`) : topic ? cap1(topic) : "Not enough structure to summarise. Try pasting the text with its section headings.";
+  const themes = [...doms.slice(0, 3), ...meths.slice(0, 2)].sort((a, b) => b[1] - a[1]).map(([n]) => cap1(n)).slice(0, 5);
+  /* what stands out: whole bullet sentences with a distinctive signal, one per entry */
+  const score = (t) => DISTINCT.reduce((n, [re, w]) => n + (re.test(t) ? w : 0), 0);
+  const cands = [];
+  for (const u of content) {
+    if (u.sub) continue;
+    if (!u.role && !u.label && u.text.length >= 40 && u.text.split(" ").length >= 6) {
+      let sc = score(u.text); const lead = /founder/i.test(u.e.role) ? 3 : /president|chair|director/i.test(u.e.role) ? 2 : 0;
+      if (lead && u.e.bullets[0] === u.text) sc += lead;
+      if (sc > 0) cands.push({ sc, e: u.e, text: lead && !/^(selected|awarded|named)/i.test(u.text) ? `${u.e.role}${u.e.org ? `, ${u.e.org}` : ""}: ${u.text.charAt(0).toLowerCase()}${u.text.slice(1)}` : u.text, evidence: u.text });
+    } else if (u.role && u.text.split(" ").length >= 5 && /\b1 of \d+|selected|award/i.test(u.text)) cands.push({ sc: score(u.text), e: u.e, text: u.text, evidence: u.text });
+  }
+  cands.sort((a, b) => b.sc - a.sc);
+  const unique = []; const usedE = new Set();
+  for (const c of cands) { const k = norm(c.e.org) || c.e; if (usedE.has(k)) continue; usedE.add(k); unique.push({ text: clip(c.text, 220), evidence: clip(c.evidence, 200) }); if (unique.length >= 4) break; }
+  if (pubN >= 2) unique.splice(Math.min(1, unique.length), 0, { text: `${pubN} publications listed${outlets.length ? `, including in ${andList(outlets.slice(0, 2))}` : ""}${absN ? `, plus ${absN} abstracts or presentations` : ""}.`, evidence: clip(outlets[0] || "", 200) });
+  const specialtyFit = specHits.slice(0, 5).map(({ s, hits }) => ({ specialty: s.n, why: `${hits.length} ${hits.length === 1 ? "entry" : "entries"} in your resume point here.`, signals: hits.slice(0, 3).map((h) => clip(h.text, 160)), gaps: [] }));
+  return { profile: { headline, unique: unique.slice(0, 5), strengths, interests, themes, experiences: experiences.slice(0, 15), specialtyFit }, network: [...people.values(), ...orgs.values()].slice(0, 30), counts: { pubN, absN, secs } };
 }
 
 /* ================= Claude: one prompt, strict JSON, validated ================= */
@@ -454,25 +542,14 @@ const METRICS = [
 ];
 function countsFrom(text, prof) {
   const out = { research: null, abstracts: null, pubs: null, work: null, volunteer: null, aoa: "unknown", grad: "" };
-  if (!text) { const ex = arr(prof && prof.experiences); if (ex.length) { out.research = ex.filter((e) => e.kind === "research").length; out.volunteer = ex.filter((e) => e.kind === "service").length; out.work = ex.filter((e) => ["clinical", "venture", "teaching", "other"].includes(e.kind)).length; } return out; }
-  const lines = text.split(/\r?\n/).map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean);
-  let head = ""; const by = {};
-  for (const l of lines) {
-    const h = l.replace(/[:\s]+$/, "");
-    if (h.length <= 48 && !DATE_RE.test(h) && SECTION_RE.some(([, re]) => re.test(h))) { head = h.toLowerCase(); continue; }
-    (by[head] = by[head] || []).push(l);
+  let ex = arr(prof && prof.experiences);
+  if (text) {
+    const q = quickRead(text); out.pubs = q.counts.pubN; out.abstracts = q.counts.absN; ex = q.profile.experiences;
+    if (/alpha omega alpha|\bAOA\b/i.test(text)) out.aoa = "yes";
+    const edu = q.counts.secs.filter((s) => s.cat === "education").flatMap((s) => s.entries.flatMap((e) => [e.role, e.org, ...e.bullets])).join(" \n");
+    out.grad = /\b(M\.?P\.?H|MsPH|M\.?S\.?c?|Ph\.?D|M\.?B\.?A|M\.?A|M\.?Eng|M\.?Ed|M\.?H\.?A|Master'?s?|Master of)\b/.test(edu) ? "yes" : "no";
   }
-  const count = (re, ok) => Object.entries(by).filter(([h]) => re.test(h)).reduce((n, [, ls]) => n + ls.filter(ok).length, 0);
-  const cite = (l) => l.length > 30 && /\bet al\b|journal|\(\d{4}\)|\d{4}[;.]|doi|accepted|in press|submitted|under review|\b[A-Z][a-z]+ [A-Z]{1,2}[,.]/.test(l.replace(BULLET, ""));
-  out.pubs = count(/publication|manuscript|peer/i, cite);
-  out.abstracts = count(/abstract|poster|presentation/i, (l) => l.length > 25 && !BULLET.test(l) || cite(l));
-  const ex = arr(prof && prof.experiences);
-  out.research = ex.filter((e) => e.kind === "research").length;
-  out.volunteer = ex.filter((e) => e.kind === "service").length;
-  out.work = ex.filter((e) => ["clinical", "venture", "teaching", "other"].includes(e.kind)).length;
-  if (/alpha omega alpha|\bAOA\b/i.test(text)) out.aoa = "yes";
-  const edu = Object.entries(by).filter(([h]) => /education|training|academic/i.test(h)).flatMap(([, ls]) => ls).join(" \n");
-  out.grad = /\b(M\.?P\.?H|MsPH|M\.?S\.?c?|Ph\.?D|M\.?B\.?A|M\.?A|M\.?Eng|M\.?Ed|M\.?H\.?A|Master'?s?|Master of)\b/.test(edu) ? "yes" : "no";
+  if (ex.length) { out.research = ex.filter((e) => e.kind === "research").length; out.volunteer = ex.filter((e) => e.kind === "service").length; out.work = ex.filter((e) => !["research", "service"].includes(e.kind)).length; }
   return out;
 }
 const numOr = (v) => (v === "" || v === null || v === undefined || !isFinite(+v) ? null : +v);
