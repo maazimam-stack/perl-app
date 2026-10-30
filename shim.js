@@ -258,7 +258,7 @@
         : /^\d{6,10}$/.test(v) ? await client.auth.verifyOtp({ email: em, token: v, type: "email" })
         : { error: { message: "bad input" } };
       btn.disabled = false;
-      if (error) msg.textContent = "That link or code didn't work. Links work once and expire after an hour. Request a new email.";
+      if (error) msg.textContent = "That link or code didn't work. Links work once and expire after an hour, and school or work email may use them up by scanning them. Try a personal email such as Gmail.";
     });
     wrap.querySelector("#perl-email").focus();
     return wrap;
@@ -291,7 +291,16 @@
       if (s && useSession(s)) { if (gate) { gate.remove(); gate = null; } if (/access_token=|[?&]code=/.test(location.hash + location.search)) history.replaceState(null, "", location.pathname + "#today"); }
     });
     const { data: { session: s } } = await client.auth.getSession();
-    if (!useSession(s)) gate = signInGate();
+    if (!useSession(s)) {
+      gate = signInGate();
+      /* a used or expired link comes back as #error=...&error_code=otp_expired. School email systems (Outlook Safe Links,
+         Proofpoint) often open every link the moment it arrives, which uses it up before the student taps it. */
+      const h = new URLSearchParams(location.hash.slice(1));
+      if (h.get("error_code") || h.get("error")) {
+        gate.querySelector(".perl-msg").textContent = "That sign-in link was already used or expired. School and work email often opens links automatically to scan them, which uses them up. Sign in with a personal email such as Gmail instead.";
+        history.replaceState(null, "", location.pathname);
+      }
+    }
   }
   start();
 })();
