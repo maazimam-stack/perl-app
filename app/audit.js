@@ -91,8 +91,102 @@ function creditsOf(rest) {
   return null;
 }
 
+/* ---------- CI CARE degree audit (intranet.medicine.illinois.edu/apps/care), printed to PDF or copied from the page ----------
+   Each requirement prints as "<name> Complete | Not Complete | Will Complete", followed by its rule ("Total passed credits for
+   CLE 690 through CLE 799 ...") and a table of the courses applied to it:
+     Past - Fall 2024 CLE 613 A 78447 Intro to Clinical Practice 5.000 S 2024-08-26 2024-12-11
+   Only table rows (code + section + 5-digit CRN) count as courses, so course numbers named in the rules are never read as
+   enrolments. The requirement's own status line is trusted over anything inferred. */
+const CARE_REQ = [
+  [/^family medicine clerkship$/, "cl_fm"], [/^internal medicine clerkship$/, "cl_im"], [/^neurology clerkship$/, "cl_neuro"],
+  [/^psychiatry clerkship$/, "cl_psych"], [/^obstetrics (&|and) gynecology clerkship$/, "cl_ob"], [/^pediatrics clerkship$/, "cl_peds"],
+  [/^surgery clerkship$/, "cl_surg"], [/^family medicine continuity clinic$/, "fmcc"], [/^innovation, design, engineering and analysis projects/, "idea"],
+  [/^career boot ?camp$/, "cbc"], [/^medicine - capstone project or data science/, "project"], [/^sub-?internship$/, "subi"],
+  [/^pass usmle step 1$/, "step1"], [/^pass usmle step 2 (ck|clinical knowledge)$/, "step2"],
+  [/^earn satisfactory grade for 4 weeks of electives during p2$/, "y3elec"], [/^gateway osce/, "gateway"], [/^(acls|pals|acls or pals)\b/, "acls"]
+];
+const CARE_Y1 = ["foundations: molecules to populations", "cardiovascular", "respiratory", "renal", "clinical neuroscience", "musculoskeletal", "digestion, nutrition, & metabolism", "introduction to clinical practice (longitudinal)"];
+const CARE_Y2 = ["human development and reproductive health", "hematology, oncology, infection, and immunity", "multisystem conditions", "synthesis & summary"];
+const CLERK_CODE = { "CLE 640": "Family Medicine", "CLE 645": "Internal Medicine", "CLE 650": "Neurology", "CLE 655": "Psychiatry", "CLE 660": "Obstetrics and Gynecology", "CLE 665": "Pediatrics", "CLE 670": "Surgery" };
+function isCiCare(text) { return /Total passed credits for|(?:^|\n)\s*[^\n]{3,90}\s(?:Will|Not)\s+Complete\s*(?:\n|$)|Degree Audit - CI CARE/i.test(text); }
+function careDay(now) { const d = now || new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+function parseCiCare(text, now) {
+  const out = { format: "cicare", matriculation: null, expectedGraduation: null, reqSet: null, statuses: {}, electives: [], rotations: [], notes: [], found: 0, step1Date: null, admitTerm: null };
+  const day = careDay(now);
+  /* 1. requirement status lines */
+  const reqs = {};
+  for (const raw of String(text).replace(/\r/g, "").split("\n")) {
+    const m = /^\s*(.+?)\s+(Not Complete|Will Complete|Complete)\s*$/.exec(raw.replace(/[\uE000-\uF8FF\u2022\u25B6\u25BC\u25B8\u25BE]/g, "").replace(/\s+/g, " "));
+    if (!m || /^requirement$/i.test(m[1])) continue;
+    reqs[m[1].toLowerCase().trim()] = m[2] === "Complete" ? "done" : m[2] === "Will Complete" ? "will" : "not";
+  }
+  /* 2. course rows: whitespace collapsed and dates split across lines rejoined ("2025-04-\n28") */
+  const flat = String(text).replace(/\s+/g, " ").replace(/(\d{4})\s*-\s*(\d{2})\s*-\s*(\d{2})/g, "$1-$2-$3");
+  const adm = /using admit term (Fall|Spring|Summer) (\d{4})/i.exec(flat); if (adm) out.admitTerm = `${adm[1]} ${adm[2]}`;
+  const rowRe = /(?:\b(Past|Current|Previous|Future)\s*-\s*(Fall|Spring|Summer|Winter)\s*(\d{4})?\s+)?\b(BSE|CLE)\s+(\d{3})\s+([A-Z])\s+(\d{5})\s+(.+?)\s+(\d{1,2}\.\d{3})(?:\s+([A-Z]{1,3}\*?))?(?:\s+(\d{4}-\d{2}-\d{2}))?(?:\s+(\d{4}-\d{2}-\d{2}))?/g;
+  const rows = []; const seenCrn = new Set();
+  for (const m of flat.matchAll(rowRe)) {
+    const key = `${m[4]} ${m[5]} ${m[7]} ${m[11] || ""}`; if (seenCrn.has(key)) continue; seenCrn.add(key); /* one course can print under two requirements */
+    const g = m[10] && !/^(Past|Current|Previous|Future)$/.test(m[10]) ? m[10].replace("*", "") : "";
+    rows.push({ when: (m[1] || "").toLowerCase(), code: `${m[4]} ${m[5]}`, title: m[8].replace(/\s+/g, " ").trim(), credits: Number(m[9]), grade: g, start: m[11] || "", end: m[12] || "" });
+  }
+  out.found = new Set(rows.map((r) => r.code)).size;
+  const rowState = (r) => {
+    const st = GRADE[r.grade] || "";
+    if (st === "done" || st === "fail" || st === "inc" || st === "wd") return st;
+    if (st === "inprog") return "inprog";
+    if (r.start && r.start > day) return "planned";
+    return "inprog"; /* enrolled, no final grade yet */
+  };
+  /* 3. statuses from the audit's own lines */
+  for (const [name, st] of Object.entries(reqs)) {
+    const hit = CARE_REQ.find(([rx]) => rx.test(name)); if (!hit) continue;
+    const id = hit[1];
+    if (st === "done") { out.statuses[id] = "done"; continue; }
+    const codes = REQ_COURSES[id] || [];
+    const mine = rows.filter((r) => codes.includes(r.code) && rowState(r) !== "wd");
+    const running = mine.some((r) => rowState(r) === "inprog" || (r.start && r.start <= day));
+    out.statuses[id] = running ? "inprog" : "todo";
+    if (st === "will" && mine.length && mine.every((r) => r.end && r.end < day)) out.notes.push(`${(COURSES[codes[0]] || name)}: finished, grade not posted yet.`);
+  }
+  const allDone = (names) => names.filter((n) => reqs[n] !== undefined);
+  const y1 = allDone(CARE_Y1), y2 = allDone(CARE_Y2);
+  if (y1.length >= 6) out.statuses.y1 = y1.every((n) => reqs[n] === "done") ? "done" : "inprog";
+  if (y2.length >= 3) out.statuses.y2 = y2.every((n) => reqs[n] === "done") ? "done" : "inprog";
+  /* 4. clerkships with dates become rotations */
+  for (const r of rows) {
+    const name = CLERK_CODE[r.code]; if (!name || !r.start || !r.end || GRADE[r.grade] === "wd") continue;
+    if (out.rotations.some((x) => x.name === name && x.start === r.start)) continue;
+    out.rotations.push({ name, code: r.code, kind: "clerkship", start: r.start, end: r.end, status: GRADE[r.grade] === "done" ? "done" : r.end < day ? "graded-pending" : r.start <= day ? "now" : "planned" });
+  }
+  out.rotations.sort((a, b) => a.start.localeCompare(b.start));
+  /* 5. electives: table rows only */
+  const byCode = new Map(); for (const r of rows) { if (!byCode.has(r.code)) byCode.set(r.code, []); byCode.get(r.code).push(r); }
+  for (const [code, rs] of byCode) {
+    if (NOT_ELECTIVE.has(code) || CLERK_CODE[code]) continue;
+    const n = Number(code.slice(4)); const isSubi = SUBI_CODES.has(code);
+    const elective = isSubi || code.startsWith("CLE") ? (n === 631 || n >= 675 || n === 610) : (n === 602 || n === 655 || n === 660 || n >= 700);
+    if (!elective) continue;
+    const states = rs.map(rowState); if (states.every((x) => x === "wd")) continue;
+    if (states.includes("fail") && !states.includes("done")) { out.notes.push(`${code} ${COURSES[code] || rs[0].title}: U on the audit. Electives are remediated by a different elective (APS-30).`); continue; }
+    const credits = rs.filter((r, i) => states[i] !== "wd").reduce((t, r) => t + (r.credits || 0), 0) || null;
+    const status = states.includes("done") ? "done" : states.includes("inprog") ? "inprog" : "planned";
+    const first = rs.find((r) => r.start) || {};
+    out.electives.push({ code, name: COURSES[code] || rs[0].title, credits, weeks: credits, kind: isSubi ? "subi" : code.startsWith("CLE") && !NON_CLINICAL_CLE.has(code) ? "clinical" : "open", status, start: first.start || "", end: first.end || "" });
+  }
+  /* 6. exams, start date */
+  const s1 = /USMLE\s*-\s*Step\s*1\s+(\d{4}-\d{2}-\d{2})/i.exec(flat); if (s1) out.step1Date = s1[1];
+  const starts = rows.filter((r) => r.start && (r.code === "BSE 612" || r.code === "CLE 613")).map((r) => r.start).sort();
+  if (starts.length) out.matriculation = starts[0];
+  for (const r of rows) if (GRADE[r.grade] === "fail") out.notes.push(`${r.code} ${COURSES[r.code] || r.title}: U on the audit. Check your remediation plan (APS-17).`);
+  if (reqs["pass usmle step 2 clinical knowledge"] && reqs["pass usmle step 2 clinical knowledge"] !== "done") { /* never inferred from the word "Passed" in the rule text */ }
+  out.notes = [...new Set(out.notes)].slice(0, 8);
+  return out;
+}
+
 /* Returns { matriculation, expectedGraduation, reqSet, statuses, electives, notes, found } */
-function parseAudit(text) {
+function parseAudit(text, now) {
+  if (isCiCare(String(text))) { const r = parseCiCare(text, now); if (r.found || Object.keys(r.statuses).length) return r; }
   const out = { matriculation: null, expectedGraduation: null, reqSet: null, statuses: {}, electives: [], notes: [], found: 0 };
   const seen = new Map(); // code -> [{grade, credits, line}]
   const lines = String(text).replace(/\r/g, "").split("\n");
@@ -169,7 +263,7 @@ function parseAudit(text) {
   }
 
   const flat = text.replace(/\s+/g, " ");
-  const step = (re) => { const m = flat.match(re); if (!m) return null; return /fail/i.test(m[0]) ? "fail" : /pass|\bP\b/i.test(m[0]) ? "done" : null; };
+  const step = (re) => { const m = flat.match(re); if (!m || /not\s+(complete|passed|taken)|will\s+complete|requirement/i.test(m[0])) return null; return /fail/i.test(m[0]) ? "fail" : /pass|\bP\b/i.test(m[0]) ? "done" : null; };
   const s1 = step(/step\s*(?:1|one|i)\b[^.]{0,50}?\b(pass(?:ed)?|fail(?:ed)?)\b/i);
   const s2 = step(/step\s*(?:2|two|ii)(?:\s*ck)?\b[^.]{0,50}?\b(pass(?:ed)?|fail(?:ed)?)\b/i);
   if (s1) { out.statuses.step1 = s1 === "done" ? "done" : "todo"; if (s1 === "fail") out.notes.push("Step 1 shows a fail. See APS-31 and APS-33 (3-year limit) and talk with Student Affairs."); }

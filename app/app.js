@@ -94,7 +94,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 /* A new student starts blank and goes through setup. The example lives in its own sandbox and is never saved. */
 const BLANK = { v: 1, example: false, updatedAt: 0,
   profile: { matric: "", phase: "ci", ciStart: "", ciEnd: "", grad: "", step1: "not", step1Date: "", step2: "not", step2Date: "", reqSet: "both", leaveMonths: 0, name: "", myName: "", track: "", trackSched: "", setupDone: false },
-  req: {}, electives: [], rotations: [], scheds: [], done: {}, askRecent: [], customTracks: null };
+  req: {}, electives: [], rotations: [], scheds: [], done: {}, askRecent: [], customTracks: null, habits: null, career: null };
 function normalize(src) {
   const b = clone(BLANK); const o = { ...b, ...(src || {}) };
   o.profile = { ...b.profile, ...((src && src.profile) || {}) };
@@ -234,14 +234,16 @@ const ICON = {
   vault: '<rect x="2.5" y="4.5" width="13" height="10" rx="2"/><path d="M6.5 4.5V3a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1.5M2.5 9h13"/>',
   mspe: '<path d="M4 2.5h7l3 3v10H4z"/><path d="M6.5 8.5l1.5 1.5 3-3.5"/>',
   dsettings: '<path d="M3 5h7M13 5h2M3 9h2M8 9h7M3 13h9M15 13h0"/><circle cx="11.5" cy="5" r="1.5"/><circle cx="6.5" cy="9" r="1.5"/><circle cx="13.5" cy="13" r="1.5"/>',
-  schedule: '<rect x="2.5" y="3.5" width="13" height="12" rx="2.5"/><path d="M2.5 7.5h13M6 10.5h2M10 10.5h2M6 13h2"/>'
+  schedule: '<rect x="2.5" y="3.5" width="13" height="12" rx="2.5"/><path d="M2.5 7.5h13M6 10.5h2M10 10.5h2M6 13h2"/>',
+  habits: '<circle cx="9" cy="9" r="6.5"/><circle cx="9" cy="9" r="3"/><path d="M9 2.5v3.5M15.5 9H12"/>',
+  career: '<path d="M2.5 15.5l4-5 3 2.5 6-8"/><path d="M11.5 5h4v4"/>'
 };
 const NAV_TOP = [["today", "Today"], ["calendar", "Calendar"]];
 const NAV_DEBRIEF = [["journal", "Journal"], ["history", "History"], ["vault", "Residency vault"], ["mspe", "MSPE"], ["dsettings", "Debrief settings"]];
 const DEBRIEF_VIEWS = new Set(["journal", "history", "vault", "mspe", "dsettings"]);
 const NAV_SCHOOL = [["progress", "Progress"], ["rotations", "Rotations"], ["policies", "Policies"], ["ask", "Ask the policies"], ["health", "Policy health"]];
-const NAV_ME = [["schedule", "Schedule"]];
-const TITLES = { today: "Today", calendar: "Calendar", rotations: "Rotations", progress: "Progress", policies: "Policies", ask: "Ask the policies", health: "Policy health", profile: "Profile and settings", schedule: "Schedule", setup: "Set up", journal: "Journal", history: "History", vault: "Residency vault", mspe: "MSPE", dsettings: "Debrief settings", boot: "Perl" };
+const NAV_ME = [["schedule", "Schedule"], ["habits", "Habits"], ["career", "Career"]];
+const TITLES = { today: "Today", calendar: "Calendar", rotations: "Rotations", progress: "Progress", policies: "Policies", ask: "Ask the policies", health: "Policy health", profile: "Profile and settings", schedule: "Schedule", setup: "Set up", journal: "Journal", history: "History", vault: "Residency vault", mspe: "MSPE", dsettings: "Debrief settings", boot: "Perl", habits: "Habits", career: "Career" };
 const SPACE = { journal: "debrief", history: "debrief", vault: "debrief", mspe: "debrief", dsettings: "debrief", progress: "school", rotations: "school", policies: "school", ask: "school", health: "school" };
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");
 const KBD = IS_MAC ? "⌘K" : "Ctrl K";
@@ -271,7 +273,7 @@ function scopeHtml() {
   const who = (pr.name || "").trim() || (state.example ? "Example student" : "Your plan");
   return `<a class="scope" href="#profile" ${ui.view === "profile" ? 'aria-current="page"' : ""}><span class="avatar" aria-hidden="true">${initials()}</span><span class="scope-t"><b>${esc(who)}</b><small>Class of ${D.grad.getFullYear()} · ${esc(phaseLabel(pr.phase))}</small></span></a>`;
 }
-const MARK = `<svg class="mark" width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="9" fill="var(--sunk)"/><path d="M7.5 19.5c3.8 0 3.8-5.5 6.5-5.5s2.7-5.5 6.5-5.5" fill="none" stroke="var(--text)" stroke-width="2" stroke-linecap="round"/><circle cx="7.5" cy="19.5" r="2" fill="var(--debrief)"/><circle cx="20.5" cy="8.5" r="2" fill="var(--teal)"/></svg>`;
+const MARK = `<svg class="mark" width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="var(--teal, #4fb3a5)"/><circle cx="17.56" cy="14.44" r="12.8" fill="var(--debrief, #7d9fe0)"/><circle cx="19.25" cy="12.75" r="10.4" fill="var(--text, #eceeee)"/></svg>`;
 function brandHtml() {
   return `<a class="brand" href="#today">${MARK}<span><b>Perl</b><small>Carle Illinois MD</small></span></a>`;
 }
@@ -1043,7 +1045,7 @@ function rotationsPanel() {
     const rank = { soon: 0, slipped: 0, breach: 0, later: 1, done: 2, past: 2 };
     const ds = ri.filter((x) => x.rot === r.id && x.short !== "Ends" && x.short !== "Midpoint").map((x) => ({ ...x, st: itemState(x) })).sort((a, b) => rank[a.st] - rank[b.st] || a.date - b.date);
     const g = gradeStatus(r);
-    return `<li><div class="what"><span class="sw k-${esc(r.kind)}" aria-hidden="true"></span><button class="link strong" data-act="open-rot" data-id="${esc(r.id)}">${esc(r.name)}</button><small>${esc(ROT_KINDS[r.kind] || "Rotation")} · ${s ? fmtShort(s) : "—"} to ${e ? fmtShort(e) : "—"}${r.src === "track" && state.profile.track ? ` · Track ${esc(state.profile.track)}` : ""}${hasDays(r) ? " · daily schedule in" : ""}</small></div>
+    return `<li><div class="what"><span class="sw k-${esc(r.kind)}" aria-hidden="true"></span><button class="link strong" data-act="open-rot" data-id="${esc(r.id)}">${esc(r.name)}</button><small>${esc(ROT_KINDS[r.kind] || "Rotation")} · ${s ? fmtShort(s) : "—"} to ${e ? fmtShort(e) : "—"}${r.src === "track" && state.profile.track ? ` · ${esc(trackLabel())}` : r.src === "audit" ? " · from your audit" : r.src === "base" ? " · confirm dates" : ""}${hasDays(r) ? " · daily schedule in" : ""}</small></div>
       <div class="rot-dates">${ds.map((x) => `<span class="dchip ${x.st}">${["soon", "slipped", "breach"].includes(x.st) ? `<i class="dot ${x.st === "breach" ? "breach" : "soon"}"></i>` : ""}${esc(x.short)} <b class="num">${fmtShort(x.date)}</b>${x.st === "done" ? " · done" : x.st === "slipped" ? " · not checked off" : ""}</span>`).join("")}
         ${g ? `<span class="gp"><label for="gp-${esc(r.id)}">Grade posted</label><input type="date" id="gp-${esc(r.id)}" data-act="grade-posted" data-id="${esc(r.id)}" value="${esc(r.gradePosted || "")}"><span class="pill ${g[0]}">${esc(g[1])}</span></span>` : ""}</div>
       <div class="tail">${st}<button class="btn quiet small" data-act="del-rot" data-id="${esc(r.id)}" aria-label="Remove ${esc(r.name)}">Remove</button></div></li>`;
@@ -1084,7 +1086,7 @@ function heroHtml() {
   const t = today(); const pr = state.profile; const cur = currentRotation(); const nr = nextRotation(); const nx = nextAction(cur);
   const h = new Date().getHours(); const hello = h < 5 ? "Good evening" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
   const name = (pr.name || "").trim().split(/\s+/)[0];
-  const meta = `${hello}${name ? `, ${esc(name)}` : ""} · ${WDL[t.getDay()]}, ${MONTHL[t.getMonth()]} ${t.getDate()} · ${esc(phaseLabel(pr.phase))}${pr.track ? ` · Track ${esc(pr.track)}` : ""}`;
+  const meta = `${hello}${name ? `, ${esc(name)}` : ""} · ${WDL[t.getDay()]}, ${MONTHL[t.getMonth()]} ${t.getDate()} · ${esc(phaseLabel(pr.phase))}${pr.track ? ` · ${esc(trackLabel(pr))}` : ""}`;
   const todayEv = schedFor(isoD(t));
   const daySec = todayEv.length ? `<h2 class="label">Today on ${esc(rotShort(todayEv[0].sched))}</h2><ul class="day-list">${todayEv.map(evRow).join("")}</ul>`
     : cur && (state.scheds || []).some((x) => x.from <= isoD(t) && x.to >= isoD(t)) ? `<h2 class="label">Today</h2><p class="hero-clear">Nothing on your ${esc(rotShort(cur.name))} schedule today.</p>`
@@ -1186,6 +1188,7 @@ function vToday() {
   return `<div class="home">
     ${heroHtml()}
     ${exampleNotice()}
+    ${modToday()}
     <section class="dbf dbf-today" id="view-today" aria-label="Debrief"></section>
     <div class="g12 r-main">${agendaPanel()}<div class="col s4">${limitsPanel()}${readFirstPanel()}</div></div>
     <div class="g12">${progressPanel()}${conflictsPanel()}</div>
@@ -1350,6 +1353,8 @@ function auditReview(r) {
       if (ex.status !== e.status || (e.credits && Number(ex.credits) !== Number(e.credits))) rows.push({ key: "e:" + i, text: `Update elective <b>${esc(ex.name)}</b>: ${st}${e.credits ? ` · ${e.credits} cr` : ""}` });
     } else rows.push({ key: "e:" + i, text: `Add elective <b>${esc(e.name)}</b> (${esc(e.code)}) · ${kind} · ${e.credits ? e.credits + " cr" : "credits not listed"} · ${st}` });
   });
+  if ((r.rotations || []).length) { const bt = bestTrack(r.rotations); rows.push({ key: "rot", text: `Schedule → ${r.rotations.map((x) => `<b>${esc(rotShort(x.name))}</b> ${esc(fmtShort(parseD(x.start)))}–${esc(fmtShort(parseD(x.end)))}`).join(", ")} · ${bt.exact ? `matches Track ${esc(bt.id)}` : `custom track${bt.id ? ` (started from Track ${esc(bt.id)})` : ""}`}` }); }
+  if (r.step1Date && r.step1Date !== state.profile.step1Date) rows.push({ key: "s1d", text: `Step 1 → <b>passed ${esc(fmt(parseD(r.step1Date)))}</b>` });
   if (r.reqSet && r.reqSet !== state.profile.reqSet) rows.push({ key: "r", text: `Rulebook → <b>APS-${esc(r.reqSet)}</b> (named in the audit)` });
   if (r.matriculation && parseD(r.matriculation) && r.matriculation !== state.profile.matric) rows.push({ key: "m", text: `Matriculation date → <b>${esc(fmt(parseD(r.matriculation)))}</b>` });
   if (r.expectedGraduation && parseD(r.expectedGraduation) && r.expectedGraduation !== state.profile.grad) rows.push({ key: "g", text: `Graduation → <b>${esc(fmtMonth(parseD(r.expectedGraduation)))}</b>` });
@@ -1362,7 +1367,7 @@ function auditReview(r) {
 let pdfReady = null;
 function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("Couldn't load the PDF reader")); document.head.appendChild(s); }); }
 async function pdfText(buf) {
-  if (!pdfReady) pdfReady = loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js");
+  if (!pdfReady) pdfReady = loadScript("vendor/pdf.min.js");
   await pdfReady;
   const lib = window.pdfjsLib;
   if (!lib) throw new Error("PDF reader unavailable");
@@ -1371,9 +1376,24 @@ async function pdfText(buf) {
   let out = "";
   for (let i = 1; i <= Math.min(doc.numPages, 40); i++) {
     const pg = await doc.getPage(i); const tc = await pg.getTextContent();
-    out += tc.items.map((it) => it.str + (it.hasEOL ? "\n" : " ")).join("") + "\n";
+    out += pdfJoin(tc.items) + "\n";
   }
   return out.replace(/[ \t]+/g, " ").trim();
+}
+/* pdf.js hands back text in fragments, often mid-word; join by position so words stay whole and lines stay lines */
+function pdfJoin(items) {
+  let out = "", prev = null;
+  for (const it of items) {
+    if (!it.str && !it.hasEOL) continue;
+    const x = it.transform[4], y = it.transform[5], h = Math.abs(it.transform[3]) || Math.abs(it.transform[0]) || 10;
+    if (prev) {
+      if (Math.abs(y - prev.y) >= h * 0.5) { if (!out.endsWith("\n")) out += "\n"; }
+      else if (x - (prev.x + prev.w) > h * 0.18 && !/[ \n]$/.test(out) && !it.str.startsWith(" ")) out += " ";
+    }
+    out += it.str; prev = { x, y, w: it.width || 0 };
+    if (it.hasEOL) out += "\n";
+  }
+  return out;
 }
 async function readAuditFile(file) {
   ui.audit.status = "reading"; ui.audit.fileName = file.name; ui.audit.error = ""; render();
@@ -1401,7 +1421,14 @@ function runAudit() {
 }
 function applyAudit() {
   const r = ui.audit.result; if (!r) return;
-  const ok = (k) => ui.audit.pick[k] !== false;
+  applyAuditResult(r, (k) => ui.audit.pick[k] !== false);
+  becomeMine(); persist();
+  ui.audit = { open: false, status: "idle", text: "", fileName: "", result: null, error: "", pick: {} };
+  render(); const pg = reqProgress(); toast(`Audit applied. Graduation checklist: ${pg.done} of ${pg.total}.`);
+}
+/* everything an audit can fill in; used by Progress (with the review ticks) and by setup (all of it) */
+function applyAuditResult(r, ok) {
+  ok = ok || (() => true);
   for (const [id, st] of Object.entries(r.statuses || {})) if (REQS.find((x) => x.id === id) && STATUS[st] && ok("s:" + id)) state.req[id] = st;
   (r.electives || []).forEach((e, i) => {
     if (!e || !e.name || !ok("e:" + i)) return;
@@ -1412,9 +1439,16 @@ function applyAudit() {
   if (ok("r") && r.reqSet) state.profile.reqSet = r.reqSet;
   if (ok("m") && r.matriculation && parseD(r.matriculation)) state.profile.matric = r.matriculation;
   if (ok("g") && r.expectedGraduation && parseD(r.expectedGraduation)) state.profile.grad = r.expectedGraduation.slice(0, 7);
-  becomeMine(); persist();
-  ui.audit = { open: false, status: "idle", text: "", fileName: "", result: null, error: "", pick: {} };
-  render(); const pg = reqProgress(); toast(`Audit applied. Graduation checklist: ${pg.done} of ${pg.total}.`);
+  const pr = state.profile;
+  if (ok("s:step1") && r.statuses && r.statuses.step1 === "done") pr.step1 = "passed";
+  if (ok("s1d") && r.step1Date) { pr.step1 = "passed"; pr.step1Date = r.step1Date; }
+  if (ok("s:step2") && r.statuses && r.statuses.step2 === "done") pr.step2 = "passed";
+  if (ok("rot") && (r.rotations || []).length) {
+    const bt = bestTrack(r.rotations);
+    if (bt.exact && !(pr.track === "custom")) { applyTrackQuiet(bt.id); }
+    else { const base = pr.track && pr.track !== "custom" ? pr.track : pr.trackBase || bt.id; setCustomRotations(customPlan(r.rotations, base), base); }
+    const t = today(); if (r.rotations.some((x) => parseD(x.start) <= t)) pr.phase = "ci";
+  }
 }
 /* the example sandbox never turns into a student's plan; their own plan is kept apart from it */
 function becomeMine() { return false; }
@@ -1433,7 +1467,8 @@ function tracksMatching(clerk, a, b) {
   const s = schedule(); if (!s || !clerk) return [];
   return Object.entries(s.tracks).filter(([, seq]) => seq.some((x) => x.n === clerk && Math.abs(diffDays(parseD(x.a), parseD(a))) <= 7 && Math.abs(diffDays(parseD(x.b), parseD(b))) <= 7)).map(([k]) => k);
 }
-function applyTrack(id) {
+function applyTrackQuiet(id) { applyTrack(id, true); }
+function applyTrack(id, quiet) {
   const s = schedule(); const seq = s && s.tracks[id]; if (!seq) return;
   const a0 = seq[0].a, b1 = seq[seq.length - 1].b; const t = today();
   const old = state.rotations || [];
@@ -1448,6 +1483,7 @@ function applyTrack(id) {
   if (t >= parseD(a0) && t <= parseD(b1)) pr.phase = "ci"; else if (t > parseD(b1) && (pr.phase === "pre" || pr.phase === "ci")) pr.phase = "fy";
   const cur = seq.find((x) => parseD(x.a) <= t && parseD(x.b) >= t);
   if (cur && REQ_FOR[cur.n] && (state.req[REQ_FOR[cur.n]] || "todo") === "todo") state.req[REQ_FOR[cur.n]] = "inprog";
+  if (quiet) return;
   const first = becomeMine(true); persist(); render();
   const what = cur ? `You're on ${cur.n === "Elective" ? "an elective" : rotShort(cur.n)} until ${WD[parseD(cur.b).getDay()]}, ${fmtShort(parseD(cur.b))}.` : `${plural(seq.length, "rotation")} added.`;
   toast(`${first ? "Your plan is set up. " : ""}Track ${id} set. ${what}`);
@@ -1479,6 +1515,90 @@ function trackPanel() {
     <p class="tk-lead">${lead}</p>
     ${onNow.length ? `<div class="tk-find" role="group" aria-label="What you're on now"><span class="hint">On now:</span>${onNow.map((n) => `<button class="chip" aria-pressed="${f === n}" data-act="track-find" data-n="${esc(n)}">${esc(TRACK_SHORT[n] || n)}</button>`).join("")}${f ? `<button class="link" data-act="track-find" data-n="">Show all</button>` : ""}</div>` : ""}
     <div class="table-wrap"><table class="tk"><caption class="sr">Clerkship tracks by block</caption><thead>${head}</thead><tbody>${rows}</tbody></table></div>
+  </section>`;
+}
+
+/* ----- custom tracks: your own clerkship sequence, built from your degree audit or by hand -----
+   Students who start off-cycle (a later Step 1, a leave, a swap approved by Student Affairs) don't match any of the ten
+   tracks. Their plan is their rotations, each tagged with where it came from: the audit (registrar dates), a standard
+   track they started from (to confirm), or themselves. */
+const CLERK_WEEKS = { "Internal Medicine": 10, "Surgery": 10 };
+function trackLabel(pr) { pr = pr || state.profile; return pr.track === "custom" ? (pr.trackBase ? `Custom track (from ${pr.trackBase})` : "Custom track") : pr.track ? `Track ${pr.track}` : ""; }
+function bestTrack(rots) {
+  const s = schedule(); if (!s || !rots.length) return { id: "", score: 0, exact: false };
+  let best = { id: "", score: 0, exact: false };
+  for (const [id, seq] of Object.entries(s.tracks)) {
+    const score = rots.filter((r) => seq.some((x) => x.n === r.name && Math.abs(diffDays(parseD(x.a), parseD(r.start))) <= 7 && Math.abs(diffDays(parseD(x.b), parseD(r.end))) <= 7)).length;
+    if (score > best.score) best = { id, score, exact: score === rots.length };
+  }
+  return best;
+}
+function clerkState(name) { const id = REQ_FOR[name]; return id ? state.req[id] || "todo" : ""; }
+/* builds the rotation list for a custom track: audit dates first, then the base track's future blocks for clerkships the audit doesn't cover */
+function customPlan(auditRots, base) {
+  const t = today(); const s = schedule(); const seq = base && s && s.tracks[base] ? s.tracks[base] : [];
+  const out = auditRots.map((r) => ({ id: `a-${r.code.replace(/\s/g, "")}-${r.start}`, name: r.name, kind: "clerkship", start: r.start, end: r.end, src: "audit" }));
+  const covered = new Set(out.map((r) => r.name));
+  for (const [i, x] of seq.entries()) {
+    if (x.n === "Elective" || covered.has(x.n) || parseD(x.a) <= t || clerkState(x.n) === "done") continue;
+    out.push({ id: `b${base}-${i}`, name: x.n, kind: "clerkship", start: x.a, end: x.b, src: "base" });
+    covered.add(x.n);
+  }
+  return out.sort((a, b) => a.start.localeCompare(b.start));
+}
+function setCustomRotations(rots, base) {
+  const keep = (state.rotations || []).filter((r) => r.kind !== "clerkship" && !/^Elective \(block/.test(r.name));
+  const grades = Object.fromEntries((state.rotations || []).filter((r) => r.gradePosted).map((r) => [r.name + r.start, r.gradePosted]));
+  state.rotations = keep.concat(rots.map((r) => (grades[r.name + r.start] ? { ...r, gradePosted: grades[r.name + r.start] } : r)));
+  const pr = state.profile; pr.track = "custom"; pr.trackBase = base || ""; pr.trackSched = schedule() ? schedule().id : "";
+  const cl = state.rotations.filter((r) => r.kind === "clerkship").sort((a, b) => a.start.localeCompare(b.start));
+  if (cl.length) { pr.ciStart = cl[0].start; pr.ciEnd = cl[cl.length - 1].end; }
+}
+function missingClerkships() {
+  const have = new Set((state.rotations || []).filter((r) => r.kind === "clerkship").map((r) => r.name));
+  return CLERKSHIPS.filter((n) => !have.has(n) && clerkState(n) !== "done");
+}
+function nextSlot(name) {
+  const weeks = CLERK_WEEKS[name] || 5; const s = schedule(); const t = today();
+  const ends = (state.rotations || []).filter((r) => r.kind === "clerkship" && r.end).map((r) => r.end).sort();
+  const after = ends.length ? ends[ends.length - 1] : isoD(t);
+  const blk = s ? s.blocks.find((b) => b.a > after) : null;
+  if (blk) {
+    const i = s.blocks.indexOf(blk); const last = s.blocks[Math.min(s.blocks.length - 1, i + (weeks > 5 ? 1 : 0))];
+    return { start: blk.a, end: last.b };
+  }
+  let st = addDays(parseD(after), 1); while (st.getDay() !== 1) st = addDays(st, 1);
+  return { start: isoD(st), end: isoD(addDays(st, weeks * 7 - 1)) };
+}
+function makeCustom() {
+  const base = state.profile.track && state.profile.track !== "custom" ? state.profile.track : state.profile.trackBase || "";
+  const cl = (state.rotations || []).filter((r) => r.kind === "clerkship").map((r) => ({ ...r, src: r.src === "track" ? "base" : r.src || "you" }));
+  setCustomRotations(cl, base); becomeMine(); persist(); render();
+  toast("Custom track on. Change any date and everything that depends on it follows.");
+}
+function rotPill(r) {
+  const t = today(); const s = parseD(r.start), e = parseD(r.end); const st = clerkState(r.name);
+  if (st === "done") return `<span class="pill pos">Done</span>`;
+  if (s && e && s <= t && e >= t) return `<span class="pill info">Now</span>`;
+  if (e && e < t) return `<span class="pill warn">Grade pending</span>`;
+  return `<span class="pill">Upcoming</span>`;
+}
+const SRC_TAG = { audit: "From your audit", base: "From your assigned track, confirm", you: "Added by you", track: "From your track" };
+function customTrackPanel(opts) {
+  opts = opts || {};
+  const pr = state.profile; const rots = (state.rotations || []).filter((r) => r.kind === "clerkship").sort((a, b) => String(a.start).localeCompare(String(b.start)));
+  const miss = missingClerkships(); const s = schedule();
+  const row = (r) => `<li class="ct-row${r.src === "base" ? " ct-confirm" : ""}">
+      <div class="what"><span class="t">${esc(r.name)}</span><small>${esc(SRC_TAG[r.src] || SRC_TAG.you)}</small></div>
+      <div class="ct-dates"><label class="sr" for="cs-${esc(r.id)}">${esc(r.name)} starts</label><input type="date" id="cs-${esc(r.id)}" data-act="ct-date" data-id="${esc(r.id)}" data-k="start" value="${esc(r.start)}"><span aria-hidden="true">to</span><label class="sr" for="ce-${esc(r.id)}">${esc(r.name)} ends</label><input type="date" id="ce-${esc(r.id)}" data-act="ct-date" data-id="${esc(r.id)}" data-k="end" value="${esc(r.end)}"></div>
+      <div class="tail">${rotPill(r)}${r.src === "base" ? `<button class="btn small" data-act="ct-confirm" data-id="${esc(r.id)}">Confirm</button>` : ""}<button class="btn quiet small" data-act="del-rot" data-id="${esc(r.id)}" aria-label="Remove ${esc(r.name)}">Remove</button></div></li>`;
+  const bases = s ? Object.keys(s.tracks) : [];
+  return `<section class="panel" aria-labelledby="h-ct" id="custom-track">
+    <div class="panel-head"><h2 id="h-ct">${opts.title || "Your clerkship track"}</h2><span class="aside">${esc(trackLabel())}</span></div>
+    <p class="tk-lead">${opts.lead || "Your own sequence. Change a date and Today, the Calendar, deadlines and your debriefs follow."}</p>
+    ${rots.length ? `<ul class="list ct-list">${rots.map(row).join("")}</ul>` : `<div class="empty">No clerkships yet. Add the ones you know below.</div>`}
+    ${miss.length ? `<div class="ct-miss"><span class="label">Still to schedule</span><div class="ct-chips">${miss.map((n) => { const sl = nextSlot(n); return `<button class="chip" data-act="ct-add" data-n="${esc(n)}" aria-label="Add ${esc(n)} starting ${esc(fmtShort(parseD(sl.start)))}">+ ${esc(TRACK_SHORT[n] || n)} <small class="num">${esc(fmtShort(parseD(sl.start)))}</small></button>`; }).join("")}</div><span class="hint">Adds it at the next open block; adjust the dates once you know them.</span></div>` : rots.length ? `<p class="hint mt8">Every core clerkship is on your plan or done.</p>` : ""}
+    ${bases.length && !opts.noBase ? `<div class="ct-base"><label for="ct-base">Assigned track</label><select id="ct-base" data-act="ct-base"><option value="">None</option>${bases.map((k) => `<option value="${esc(k)}" ${pr.trackBase === k ? "selected" : ""}>Track ${esc(k)}</option>`).join("")}</select><span class="hint">Fills the clerkships your audit doesn't list yet from that track's dates, for you to confirm.</span></div>` : ""}
   </section>`;
 }
 
@@ -1843,54 +1963,109 @@ function vProfile() {
 }
 
 /* ----- first run ----- */
+/* ----- setup: drop the degree audit and most of the plan fills itself in -----
+   With an audit: two screens (you + your audit, then check your plan). Without one: the four manual steps. */
 const SETUP_STEPS = ["You", "Program", "Schedule", "Boards and rulebook"];
+const SETUP_AUDIT_STEPS = ["You", "Your plan"];
+function setupSteps() { return ui.setupAudit ? SETUP_AUDIT_STEPS : SETUP_STEPS; }
+async function fileText(file) {
+  if (/\.pdf$/i.test(file.name) || file.type === "application/pdf") return pdfText(await file.arrayBuffer());
+  if (/\.html?$/i.test(file.name)) { const doc = new DOMParser().parseFromString(await file.text(), "text/html"); return (doc.body && doc.body.innerText || doc.body.textContent || "").replace(/\s+\n/g, "\n"); }
+  return file.text();
+}
+async function setupAuditText(text, fileName) {
+  const r = parseAudit(String(text || ""));
+  if (!r.found && !Object.keys(r.statuses || {}).length) { ui.setupErr = "That doesn't look like a degree audit: no CI MED course numbers (like CLE 645) in it. In CI CARE, open Degree Audit, choose Expand All, then print and save as PDF."; ui.setupBusy = false; render(); return; }
+  applyAuditResult(r);
+  ui.setupAudit = { ...r, fileName: fileName || "Pasted text" }; ui.setupErr = ""; ui.setupBusy = false; ui.setupPaste = false;
+  persist(); render(); refocus("#su-read");
+}
+async function setupAuditFile(file) {
+  ui.setupBusy = true; ui.setupErr = ""; render();
+  try { const text = await fileText(file); if (!String(text).trim()) throw new Error("No text in that file. If it's a scan or a photo, paste the text instead."); await setupAuditText(text, file.name); }
+  catch (e) { ui.setupBusy = false; ui.setupErr = (e && e.message) || "Couldn't read that file."; render(); }
+}
+function auditFacts(r) {
+  const pr = state.profile; const out = [];
+  if (pr.matric) out.push(["Started", fmt(parseD(pr.matric))]);
+  const sx = (id) => state.req[id] || "todo";
+  if (sx("y1") === "done" && sx("y2") === "done") out.push(["Years 1 and 2", "Complete"]);
+  if (pr.step1 === "passed") out.push(["Step 1", pr.step1Date ? `Passed ${fmtShort(parseD(pr.step1Date))}` : "Passed"]);
+  const clDone = CLERKSHIPS.filter((n) => clerkState(n) === "done").length;
+  out.push(["Core clerkships", `${clDone} of 7 done`]);
+  const el = (state.electives || []).filter((e) => e.status === "done").reduce((t, e) => t + (Number(e.credits) || 0), 0);
+  if (el) out.push(["Electives", `${el} credits done`]);
+  out.push(["Step 2 CK", pr.step2 === "passed" ? "Passed" : "Not yet"]);
+  return out;
+}
 function vSetup() {
-  const pr = state.profile; const st = ui.setupStep || 1; const N = SETUP_STEPS.length;
+  const pr = state.profile; const steps = setupSteps(); const N = steps.length; const st = Math.min(ui.setupStep || 1, N);
   const f = (id, label, input, hint) => `<div class="field"><label for="${id}">${label}</label>${input}${hint ? `<span class="hint" id="${id}-h">${hint}</span>` : ""}</div>`;
   const sel = (id, key, opts) => `<select id="${id}" data-prof="${key}">${opts.map(([v, l]) => `<option value="${v}" ${String(pr[key]) === v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
-  const lead = [
-    "Four short steps. Every School deadline comes from these answers, and you can change any of them later in Profile and settings.",
-    "Your matriculation date starts two hard clocks under APS-33: three years to pass Step 1 and six years to finish the MD.",
-    "Pick your AY2026-27 track and your clerkships, electives and the deadlines they set off fill in. Not sure? Tap what you're on now, or finish later and drop in a clerkship schedule from Schedule.",
-    "APS-6 and APS-6.1 are both posted and disagree on electives, Step 1 during clerkships and the Gateway OSCE. Until the Registrar confirms yours, keep both."
-  ][st - 1];
-  let body = "";
-  if (st === 1) body = `<div class="form-grid">
-    ${f("p-name", "First name", `<input type="text" id="p-name" data-prof="name" value="${esc(pr.name || "")}" autocomplete="given-name" aria-describedby="p-name-h">`, "Used to greet you on Today.")}
-    ${f("p-myname", "Your name on clerkship schedules", `<input type="text" id="p-myname" data-prof="myName" value="${esc(pr.myName || "")}" autocomplete="name" aria-describedby="p-myname-h">`, "As it appears in column A of a weekly schedule. Picks out your rows on import; everyone else's are dropped.")}</div>`;
-  if (st === 2) body = `<div class="form-grid">
-    ${f("p-matric", "Matriculation date", `<input type="date" id="p-matric" data-prof="matric" value="${esc(pr.matric)}" aria-describedby="p-matric-h" required>`, "Your first day of the first class. Required.")}
-    ${f("p-phase", "Current phase", sel("p-phase", "phase", [["pre", "Preclerkship"], ["ci", "Clinical Immersion"], ["fy", "Final Year"], ["loa", "On leave or in a joint degree"]]))}
-    ${f("p-grad", "Graduation target", `<input type="month" id="p-grad" data-prof="grad" value="${esc(pr.grad)}" aria-describedby="p-grad-h">`, "Leave blank to use four years from matriculation.")}
-    ${f("p-leave", "Months on leave for another degree", `<input type="number" id="p-leave" min="0" max="60" data-prof="leaveMonths" value="${esc(pr.leaveMonths || 0)}" aria-describedby="p-leave-h">`, "Excluded from the six-year limit (APS-33). Other leaves are not.")}</div>`;
-  if (st === 3) body = trackPanel();
-  if (st === 4) body = `<div class="form-grid">
-    ${f("p-set", "Which rulebook applies to you", sel("p-set", "reqSet", [["both", "Not confirmed: show both"], ["6", "APS-6 (2026)"], ["6.1", "APS-6.1 (2023 and later)"]]), "Your degree audit should say.")}
-    ${f("p-s1", "Step 1", sel("p-s1", "step1", [["not", "Not taken"], ["scheduled", "Scheduled"], ["passed", "Passed"]]))}
-    ${f("p-s1d", "Step 1 date or cohort deadline", `<input type="date" id="p-s1d" data-prof="step1Date" value="${esc(pr.step1Date)}" aria-describedby="p-s1d-h">`, "AY2026-27 calendar deadline: March 3, 2027.")}
-    ${f("p-s2", "Step 2 CK", sel("p-s2", "step2", [["not", "Not taken"], ["scheduled", "Scheduled"], ["passed", "Passed"]]))}
-    ${f("p-s2d", "Step 2 CK test date", `<input type="date" id="p-s2d" data-prof="step2Date" value="${esc(pr.step2Date)}">`)}</div>`;
-  const later = st >= 3 ? `<button class="btn quiet small" data-act="setup-done">Finish later</button>` : `<span></span>`;
+  const a = ui.setupAudit;
+  let lead = "", body = "", wrap = true;
+  if (st === 1) {
+    lead = a ? "Your audit is in. Check your name, then continue to your plan." : "Drop your degree audit and Perl fills in your courses, Step 1, clerkships and their dates. Or set it up by hand.";
+    const audit = a ? `<div class="su-read" id="su-read" tabindex="-1" role="status"><span class="su-ok" aria-hidden="true">${TICK_SVG}</span><div><b>Read ${esc(a.fileName)}</b><small>${esc(plural(a.found, "course"))}${(a.rotations || []).length ? ` · ${esc(plural(a.rotations.length, "clerkship"))} with dates` : ""}. Nothing left this browser.</small></div><button class="btn quiet small" data-act="su-undo">Use a different file</button></div>`
+      : `<div class="su-drop${ui.setupBusy ? " busy" : ""}" id="su-drop">
+          <p class="su-drop-t">${ui.setupBusy ? "Reading your audit…" : "Drop your degree audit here"}</p>
+          <p class="hint">CI CARE → Degree Audit → Expand All → Print → Save as PDF. Read in this browser; nothing is uploaded.</p>
+          <div class="su-acts"><label class="btn primary small" for="su-file">Choose the PDF</label><input id="su-file" type="file" accept=".pdf,.txt,.html,.htm" class="sr"><button class="btn small quiet" type="button" data-act="su-paste">Paste the text instead</button></div>
+          ${ui.setupPaste ? `<div class="field mt8"><label for="su-text">Audit text</label><textarea id="su-text" rows="6" placeholder="Select all on the Degree Audit page (Expand All first), copy, and paste here."></textarea><div class="su-acts"><button class="btn primary small" type="button" data-act="su-read">Read it</button></div></div>` : ""}
+          ${ui.setupErr ? `<p class="small" style="color:var(--negative)" role="alert">${esc(ui.setupErr)}</p>` : ""}
+        </div>`;
+    body = `<section class="panel">${audit}<div class="form-grid mt16">
+      ${f("p-name", "First name", `<input type="text" id="p-name" data-prof="name" value="${esc(pr.name || "")}" autocomplete="given-name" aria-describedby="p-name-h">`, "Used to greet you on Today.")}
+      ${f("p-myname", "Your name on clerkship schedules", `<input type="text" id="p-myname" data-prof="myName" value="${esc(pr.myName || "")}" autocomplete="name" aria-describedby="p-myname-h">`, "As it appears on a weekly schedule, so imports keep only your rows.")}</div></section>`;
+    wrap = false;
+  } else if (a) {
+    lead = "Here's what your audit says. Fix anything that's off; every date here drives your deadlines.";
+    const bt = bestTrack(a.rotations || []);
+    body = `<section class="panel"><div class="panel-head"><h2>From your audit</h2><span class="aside">${esc(a.fileName)}</span></div>
+        <dl class="su-facts">${auditFacts(a).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>
+        ${(a.notes || []).length ? `<ul class="rules mt8">${a.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
+      </section>
+      ${pr.track === "custom" ? customTrackPanel({ title: "Your clerkship track", lead: bt.id ? `Your dates don't follow one standard track, so this is a custom track. Track ${esc(bt.id)} is the closest; the clerkships your audit doesn't list yet come from it for you to confirm. Pick your assigned track below if it's different.` : "Your dates don't follow a standard track, so this is a custom track. Add the clerkships still to come." }) : trackPanel()}
+      <section class="panel">${f("p-grad", "Graduation target", `<input type="month" id="p-grad" data-prof="grad" value="${esc(pr.grad)}" aria-describedby="p-grad-h">`, "Not on the audit. Leave blank for four years after you started.")}</section>`;
+    wrap = false;
+  } else {
+    lead = ["", "Your matriculation date starts two hard clocks under APS-33: three years to pass Step 1 and six years to finish the MD.",
+      "Pick your AY2026-27 track and your clerkships, electives and the deadlines they set off fill in. Off-cycle? Make it a custom track.",
+      "APS-6 and APS-6.1 are both posted and disagree on electives, Step 1 during clerkships and the Gateway OSCE. Until the Registrar confirms yours, keep both."][st - 1];
+    if (st === 2) body = `<div class="form-grid">
+      ${f("p-matric", "Matriculation date", `<input type="date" id="p-matric" data-prof="matric" value="${esc(pr.matric)}" aria-describedby="p-matric-h" required>`, "Your first day of the first class. Required.")}
+      ${f("p-phase", "Current phase", sel("p-phase", "phase", [["pre", "Preclerkship"], ["ci", "Clinical Immersion"], ["fy", "Final Year"], ["loa", "On leave or in a joint degree"]]))}
+      ${f("p-grad", "Graduation target", `<input type="month" id="p-grad" data-prof="grad" value="${esc(pr.grad)}" aria-describedby="p-grad-h">`, "Leave blank to use four years from matriculation.")}
+      ${f("p-leave", "Months on leave for another degree", `<input type="number" id="p-leave" min="0" max="60" data-prof="leaveMonths" value="${esc(pr.leaveMonths || 0)}" aria-describedby="p-leave-h">`, "Excluded from the six-year limit (APS-33). Other leaves are not.")}</div>`;
+    if (st === 3) { body = pr.track === "custom" ? customTrackPanel() : trackPanel() + `<p class="hint mt8">Not on one of these? <button class="link" data-act="make-custom">Make a custom track</button></p>`; wrap = false; }
+    if (st === 4) body = `<div class="form-grid">
+      ${f("p-set", "Which rulebook applies to you", sel("p-set", "reqSet", [["both", "Not confirmed: show both"], ["6", "APS-6 (2026)"], ["6.1", "APS-6.1 (2023 and later)"]]), "Your degree audit should say.")}
+      ${f("p-s1", "Step 1", sel("p-s1", "step1", [["not", "Not taken"], ["scheduled", "Scheduled"], ["passed", "Passed"]]))}
+      ${f("p-s1d", "Step 1 date or cohort deadline", `<input type="date" id="p-s1d" data-prof="step1Date" value="${esc(pr.step1Date)}" aria-describedby="p-s1d-h">`, "AY2026-27 calendar deadline: March 3, 2027.")}
+      ${f("p-s2", "Step 2 CK", sel("p-s2", "step2", [["not", "Not taken"], ["scheduled", "Scheduled"], ["passed", "Passed"]]))}
+      ${f("p-s2d", "Step 2 CK test date", `<input type="date" id="p-s2d" data-prof="step2Date" value="${esc(pr.step2Date)}">`)}</div>`;
+  }
+  const later = !a && st >= 3 ? `<button class="btn quiet small" data-act="setup-done">Finish later</button>` : `<span></span>`;
   return `<div class="setup">
-    <ol class="steps" aria-label="Setup steps">${SETUP_STEPS.map((x, i) => `<li class="${i + 1 === st ? "on" : i + 1 < st ? "done" : ""}" ${i + 1 === st ? 'aria-current="step"' : ""}><span class="num">${i + 1}</span>${esc(x)}</li>`).join("")}</ol>
-    <div class="title-row"><div><h1>${st === 1 ? "Set up your plan" : esc(SETUP_STEPS[st - 1])}</h1><p class="finding">${lead}</p></div></div>
-    ${st === 3 ? body : `<section class="panel">${body}</section>`}
-    <div class="setup-foot">${later}<span class="setup-acts">${st > 1 ? `<button class="btn small" data-act="setup-back">Back</button>` : ""}<button class="btn primary" data-act="setup-next">${st === N ? "Finish" : "Continue"}</button></span></div>
-    <p class="hint setup-note">Writing style, target specialty and your dictation dictionary are in Debrief settings. Want to look around first? <button class="link" data-act="example-enter">Explore example data</button></p>
+    <ol class="steps" aria-label="Setup steps">${steps.map((x, i) => `<li class="${i + 1 === st ? "on" : i + 1 < st ? "done" : ""}" ${i + 1 === st ? 'aria-current="step"' : ""}><span class="num">${i + 1}</span>${esc(x)}</li>`).join("")}</ol>
+    <div class="title-row"><div><h1>${st === 1 ? "Set up your plan" : esc(steps[st - 1])}</h1><p class="finding">${lead}</p></div></div>
+    ${wrap ? `<section class="panel">${body}</section>` : body}
+    <div class="setup-foot">${later}<span class="setup-acts">${st > 1 ? `<button class="btn small" data-act="setup-back">Back</button>` : ""}<button class="btn primary" data-act="setup-next">${st === N ? "Finish" : !a && st === 1 ? "Set up by hand" : "Continue"}</button></span></div>
+    <p class="hint setup-note">You can change any of this later in Profile and Schedule. Want to look around first? <button class="link" data-act="example-enter">Explore example data</button></p>
   </div>`;
 }
 function setupNext() {
-  const st = ui.setupStep || 1;
+  const st = ui.setupStep || 1; const N = setupSteps().length;
   for (const el of document.querySelectorAll("#view [data-prof]")) { const k = el.dataset.prof; let v = el.value; if (k === "leaveMonths") v = Math.max(0, Math.min(60, Number(v) || 0)); else v = String(v).trim(); if ((k === "matric" || k === "grad") && !v) continue; state.profile[k] = v; }
-  if (st === 2 && !parseD(state.profile.matric)) { toast("Add your matriculation date. It starts the Step 1 and six-year clocks."); $("#p-matric")?.focus(); return; }
-  if (st < SETUP_STEPS.length) { ui.setupStep = st + 1; persist(); render(); window.scrollTo(0, 0); refocus("#view h1"); return; }
+  if (!ui.setupAudit && st === 2 && !parseD(state.profile.matric)) { toast("Add your matriculation date. It starts the Step 1 and six-year clocks."); $("#p-matric")?.focus(); return; }
+  if (st < N) { ui.setupStep = st + 1; persist(); render(); window.scrollTo(0, 0); refocus("#view h1"); return; }
   setupDone();
 }
-function setupDone() { state.profile.setupDone = true; persist(); ui.setupStep = 1; go("today"); toast(state.profile.track ? `Plan set up on Track ${state.profile.track}.` : "Plan set up. Add your track from Schedule when you know it."); }
+function setupDone() { state.profile.setupDone = true; persist(); ui.setupStep = 1; ui.setupAudit = null; go("today"); toast(state.profile.track ? `Plan set up on your ${trackLabel().replace(/^Track/, "track")}.` : "Plan set up. Add your track from Schedule when you know it."); }
 
 function vSchedule() {
-  return `<div class="title-row"><div><h1>Schedule</h1><p class="finding">One schedule feeds Today, the Calendar and Rotations, and your debriefs once the Debrief space arrives. Pick your track, then drop in each clerkship's weekly schedule as it comes.</p></div><div class="title-actions"><a class="btn small" href="#rotations">Edit rotations</a></div></div>
-  ${trackPanel()}
+  return `<div class="title-row"><div><h1>Schedule</h1><p class="finding">One schedule feeds Today, the Calendar and Rotations, and your debriefs once the Debrief space arrives. Pick your track, then drop in each clerkship's weekly schedule as it comes.</p></div><div class="title-actions"><button class="btn small primary" data-act="open-audit">Import degree audit</button><a class="btn small" href="#rotations">Edit rotations</a></div></div>
+  ${state.profile.track === "custom" ? customTrackPanel() + `<details class="panel tk-std"><summary>Standard AY2026-27 tracks</summary>${trackPanel()}</details>` : trackPanel() + `<p class="hint">Off-cycle, or your dates differ from every track? <button class="link" data-act="make-custom">Make a custom track</button> and set your own dates.</p>`}
   ${dropPanel()}`;
 }
 const SOON_WHAT = {
@@ -1924,6 +2099,23 @@ function accountPanel() {
   </section>`;
 }
 
+/* ================= feature modules =================
+   habits.js and career.js load after this file and register here: their own views, click actions, form events
+   and an optional card on Today. They keep their data in state.habits / state.career (the School-side document). */
+window.PERL_MODULES = window.PERL_MODULES || [];
+function modView(v) { for (const m of window.PERL_MODULES) if (m.views && m.views[v]) return m.views[v]; return null; }
+function modAct(act, el, ev) { for (const m of window.PERL_MODULES) if (m.acts && m.acts[act]) { m.acts[act](el, ev); return true; } return false; }
+function modEvent(type, ev) { for (const m of window.PERL_MODULES) if (m.on && m.on[type] && m.on[type](ev)) return true; return false; }
+/* the bridge feature modules use: app.js runs inside an IIFE, so its state and helpers aren't globals */
+window.PERL_APP = Object.freeze({
+  get state() { return state; }, get ui() { return ui; }, get SAMPLE() { return SAMPLE; }, get booted() { return booted; },
+  persist: () => persist(), render: () => render(), toast: (m) => toast(m), go: (v) => go(v), refocus: (s) => refocus(s),
+  esc, today, isoD, parseD, fmt, fmtShort, addDays, diffDays, plural,
+  schedFor: (iso) => schedFor(iso), currentRotation: () => currentRotation(), nextRotation: () => nextRotation(), rotsParsed: () => rotsParsed(),
+  pdfText: (buf) => pdfText(buf)
+});
+function modToday() { return window.PERL_MODULES.map((m) => { try { return m.today ? m.today() || "" : ""; } catch { return ""; } }).join(""); }
+
 /* ================= router and render ================= */
 const VIEWS = { today: vToday, calendar: vCalendar, rotations: vRotations, progress: vRequirements, policies: vPolicies, health: vFlags, ask: vAsk, profile: vProfile, schedule: vSchedule, setup: vSetup, journal: vNone, history: vNone, vault: vNone, mspe: vNone, dsettings: vNone, boot: vBoot };
 const ALIAS = { path: "today", deadlines: "rotations", requirements: "progress", discrepancies: "health" };
@@ -1933,7 +2125,7 @@ function route() {
   let h = decodeURIComponent((location.hash || "").replace(/^#/, ""));
   if (!state.example && !state.profile.setupDone && h !== "setup") { if (location.hash !== "#setup") { location.hash = "setup"; return; } h = "setup"; }
   if (ALIAS[h]) h = ALIAS[h];
-  if (VIEWS[h]) { ui.view = h; if (h === "policies" && !ui.keepSel) ui.sel = null; }
+  if (VIEWS[h] || modView(h)) { ui.view = h; if (h === "policies" && !ui.keepSel) ui.sel = null; }
   else if (getP(h)) { ui.view = "policies"; ui.sel = getP(h).c; }
   else ui.view = "today";
   ui.keepSel = false; ui.sheet = false;
@@ -1946,7 +2138,7 @@ function render() {
   document.documentElement.dataset.boot = ui.view === "boot" || ui.view === "setup" ? "true" : "false";
   const dbfView = DEBRIEF_VIEWS.has(ui.view);
   $("#view").hidden = dbfView; const dh = $("#dbf-views"); if (dh) dh.hidden = !dbfView;
-  $("#view").innerHTML = dbfView ? sandboxNotice() : sandboxNotice() + VIEWS[ui.view]();
+  $("#view").innerHTML = dbfView ? sandboxNotice() : sandboxNotice() + (VIEWS[ui.view] || modView(ui.view))();
   if (dbfView && state.example) $("#view").hidden = false;
   document.dispatchEvent(new CustomEvent("perl:view", { detail: { view: ui.view } }));
   $("#view").dataset.view = ui.view;
@@ -2033,6 +2225,13 @@ document.addEventListener("click", (ev) => {
     case "del-acct-yes": if (window.PERL_ACCOUNT) window.PERL_ACCOUNT.deleteAccount().catch((e) => toast((e && e.message) || "Couldn't delete your account.")); break;
     case "setup-back": ui.setupStep = Math.max(1, (ui.setupStep || 1) - 1); render(); refocus("#view h1"); break;
     case "setup-done": setupDone(); break;
+    case "su-paste": ui.setupPaste = !ui.setupPaste; render(); refocus("#su-text"); break;
+    case "su-read": { const v = ($("#su-text") || {}).value || ""; if (!v.trim()) { ui.setupErr = "Paste your audit text first."; render(); break; } setupAuditText(v, "Pasted text"); break; }
+    case "su-undo": ui.setupAudit = null; ui.setupErr = ""; render(); refocus("#su-file"); break;
+    case "make-custom": makeCustom(); break;
+    case "ct-add": { const n = t.dataset.n; const sl = nextSlot(n); const rot = { id: "c" + Date.now().toString(36), name: n, kind: "clerkship", start: sl.start, end: sl.end, src: "you" };
+      if (state.profile.track !== "custom") makeCustom(); state.rotations.push(rot); becomeMine(); persist(); render(); refocus(`#cs-${CSS.escape(rot.id)}`); toast(`${rotShort(n)} added ${fmtShort(parseD(sl.start))} to ${fmtShort(parseD(sl.end))}. Adjust the dates if they're different.`); break; }
+    case "ct-confirm": { const r = (state.rotations || []).find((x) => x.id === t.dataset.id); if (r) { r.src = "you"; persist(); render(); toast(`${rotShort(r.name)} dates confirmed.`); } break; }
     case "example-enter": if (!state.example) { mine = state; state = normalize(clone(EXAMPLE)); seedExample(); } go("today"); break;
     case "example-exit": if (mine) { state = mine; mine = null; } ui.ask.turns = []; go(state.profile.setupDone ? "today" : "setup"); break;
     case "recent-clear": state.askRecent = []; persist(); render(); break;
@@ -2043,10 +2242,12 @@ document.addEventListener("click", (ev) => {
       ui.clearConfirm = false; STORE.clear(); state = clone(BLANK); mine = null; ui.setupStep = 1;
       ui.savedNote = "Erased"; go("setup"); break;
     }
+    default: modAct(act, t, ev);
   }
 });
 document.addEventListener("change", (ev) => {
   const t = ev.target;
+  if (modEvent("change", ev)) return;
   if (t.matches("[data-act='req-status']")) { state.req[t.dataset.id] = t.value; becomeMine(); persist(); render(); return; }
   if (t.matches("[data-prof]")) {
     const k = t.dataset.prof; let v = t.value;
@@ -2066,6 +2267,17 @@ document.addEventListener("change", (ev) => {
   if (t.matches("[data-spick]")) { ui.sched.pick[t.dataset.spick] = t.checked; return; }
   if (t.id === "sched-x" && t.files && t.files[0]) { readDroppedFile(t.files[0]); return; }
   if (t.id === "drop-clerk") { if (ui.drop) ui.drop.clerk = t.value; render(); return; }
+  if (t.matches("[data-act='ct-date']")) {
+    const r = (state.rotations || []).find((x) => x.id === t.dataset.id); if (!r || !parseD(t.value)) return;
+    const k = t.dataset.k; const other = k === "start" ? r.end : r.start;
+    if ((k === "start" && other && t.value > other) || (k === "end" && other && t.value < other)) { toast("The end date is before the start date."); t.value = r[k]; return; }
+    r[k] = t.value; if (r.src === "base") r.src = "you"; if (state.profile.track !== "custom") makeCustom(); becomeMine(); persist(); toast(`${rotShort(r.name)}: ${fmtShort(parseD(r.start))} to ${fmtShort(parseD(r.end))}.`); return;
+  }
+  if (t.id === "ct-base") { const base = t.value; const auditRots = (state.rotations || []).filter((r) => r.kind === "clerkship" && r.src === "audit").map((r) => ({ name: r.name, code: r.id.split("-")[1] || "", start: r.start, end: r.end }));
+    const mineRots = (state.rotations || []).filter((r) => r.kind === "clerkship" && r.src === "you");
+    const plan = customPlan(auditRots, base).filter((x) => !mineRots.some((m) => m.name === x.name)).map((x) => (x.src === "audit" ? { ...x, id: (state.rotations.find((r) => r.src === "audit" && r.name === x.name && r.start === x.start) || x).id } : x));
+    setCustomRotations(plan.concat(mineRots), base); becomeMine(); persist(); render(); refocus("#ct-base"); toast(base ? `Started from Track ${base}. Confirm the dates marked to confirm.` : "Assigned track cleared."); return; }
+  if (t.id === "su-file" && t.files && t.files[0]) { setupAuditFile(t.files[0]); return; }
   if (t.id === "p-track") { if (t.value) applyTrack(t.value); else { state.profile.track = ""; persist(); render(); } return; }
   if (t.id === "sched-file" && t.files && t.files[0]) { const f0 = t.files[0]; const ta = $("#sched-text"); if (ta) ui.sched.text = ta.value; f0.text().then((txt) => { ui.sched.text = txt.slice(0, 200000); ui.sched.fileName = f0.name; ui.sched.items = null; ui.sched.error = ""; render(); }).catch(() => { ui.sched.error = "Couldn't read that file."; render(); }); return; }
   if (t.id === "audit-file" && t.files && t.files[0]) { const ta = $("#audit-text"); if (ta) ui.audit.text = ta.value; readAuditFile(t.files[0]); }
@@ -2073,6 +2285,7 @@ document.addEventListener("change", (ev) => {
 let qTimer = null;
 document.addEventListener("input", (ev) => {
   const t = ev.target;
+  if (modEvent("input", ev)) return;
   if (t.id === "pal-q") { pal.q = t.value; pal.idx = 0; palRender(); return; }
   if (t.matches("[data-act='pq']")) { clearTimeout(qTimer); qTimer = setTimeout(() => { ui.q = t.value; ui.sel = null; render(); }, 160); }
   if (t.id === "ask-q") ui.ask.draft = t.value;
@@ -2081,6 +2294,7 @@ document.addEventListener("input", (ev) => {
 });
 document.addEventListener("submit", (ev) => {
   const f = ev.target; ev.preventDefault();
+  if (modEvent("submit", ev)) return;
   if (f.dataset.form === "ask") ask($("#ask-q").value);
   if (f.dataset.form === "rotation") {
     const name = $("#rot-name").value.trim(); const st = $("#rot-start").value; const en = $("#rot-end").value;
@@ -2131,7 +2345,7 @@ const hasFiles = (ev) => ev.dataTransfer && Array.from(ev.dataTransfer.types || 
   if (type === "dragleave") dragDepth = Math.max(0, dragDepth - 1);
   if (type === "drop") dragDepth = 0;
   document.documentElement.classList.toggle("dropping", dragDepth > 0 && type !== "drop");
-  if (type === "drop" && ev.dataTransfer.files[0]) readDroppedFile(ev.dataTransfer.files[0]);
+  if (type === "drop" && ev.dataTransfer.files[0]) { if (ui.view === "setup") setupAuditFile(ev.dataTransfer.files[0]); else readDroppedFile(ev.dataTransfer.files[0]); }
 }));
 ["dragover", "dragleave", "drop"].forEach((type) => document.addEventListener(type, (ev) => {
   const d = ev.target.closest && ev.target.closest("#drop"); if (!d) return;
@@ -2150,6 +2364,8 @@ async function boot() {
   await STORE.init();
   let saved = null; try { saved = await STORE.load(); } catch { saved = null; }
   state = normalize(saved ? { ...saved.shared, ...saved.school } : null);
+  /* feature modules (habits.js, career.js) load after this script; wait for them before the first real route */
+  if (document.readyState === "loading") await new Promise((res) => document.addEventListener("DOMContentLoaded", res, { once: true }));
   booted = true; ui.savedNote = saved ? STORE.note() : "";
   sharedChanged();
   route();

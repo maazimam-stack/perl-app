@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co http://127.0.0.1:8765 http://localhost:8765; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Perl</title>
 <meta name="description" content="Clerkship debriefs and CI MED school deadlines, in one private app.">
@@ -127,6 +127,8 @@
 <script src="app/sched.js"></script>
 <script src="app/store.js"></script>
 <script src="app/app.js"></script>
+<script src="app/habits.js"></script>
+<script src="app/career.js"></script>
 <script src="app/debrief.js"></script>
 
 </body>

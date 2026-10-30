@@ -7,7 +7,7 @@
 const STORE = (() => {
   "use strict";
   const SHARED_KEYS = ["v", "profile", "rotations", "scheds", "customTracks", "updatedAt"];
-  const SCHOOL_KEYS = ["req", "electives", "done", "askRecent"];
+  const SCHOOL_KEYS = ["req", "electives", "done", "askRecent", "habits", "career"];
   const LS = "perl.v1.";
   let db = null, uid = null, mode = "pending", lastErr = "";
   const last = { shared: "", school: "" };
