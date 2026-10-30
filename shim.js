@@ -244,7 +244,7 @@
     const pass = wrap.querySelector("#perl-pass"), make = wrap.querySelector(".perl-new");
     let sent = false;
     /* with a password typed, the form signs in (or creates the account) with no email at all */
-    pass.addEventListener("input", () => { if (sent) return; const p = !!pass.value; btn.textContent = p ? "Sign in" : "Email me a sign-in link"; make.hidden = !p; });
+    pass.addEventListener("input", () => { const p = !!pass.value; btn.textContent = p || sent ? "Sign in" : "Email me a sign-in link"; make.hidden = !p; });
     const emailOk = () => { const em = wrap.querySelector("#perl-email").value.trim(); if (!/^\S+@\S+\.\S+$/.test(em)) { msg.textContent = "Enter a valid email address."; return null; } return em; };
     make.addEventListener("click", async () => {
       const em = emailOk(); if (!em) return;
@@ -258,7 +258,7 @@
     form.addEventListener("submit", async (e) => {
       e.preventDefault(); const em = emailOk(); if (!em) return;
       btn.disabled = true;
-      if (!sent && pass.value) {
+      if (pass.value) { /* a password always signs in directly, even after a link was emailed */
         const { error } = await client.auth.signInWithPassword({ email: em, password: pass.value });
         btn.disabled = false;
         if (error) msg.textContent = /confirm/i.test(error.message || "") ? "Confirm your email first, then sign in." : "Wrong email or password. New here? Tap Create account.";
