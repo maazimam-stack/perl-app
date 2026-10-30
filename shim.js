@@ -1,0 +1,297 @@
+/* Perl standalone runtime.
+   The app was written against the Claude artifact runtime (window.claude.use("db" | "user" | "sample" | "downloads")).
+   This file provides the same interface outside Claude:
+     db        Supabase Postgres, one table per space (docs_shared, docs_school, docs_debrief), row-level security per user
+     user      the signed-in Supabase user
+     sample    Claude through this site's /api/claude route (the API key never reaches the browser), after the student consents
+     downloads a normal file download
+   Sign-in is by email. Tap the link, or (in an installed app, where the link opens the browser instead) paste the link
+   or a 6-digit code into the sign-in box. The implicit flow is used so the link works in any browser it opens in.
+   window.PERL_BACKEND = "memory" (set before this script) swaps Supabase for a local in-browser store; tests use it. */
+(() => {
+  "use strict";
+  const MEMORY = window.PERL_BACKEND === "memory";
+  const CONSENT_KEY = "perl.v1.ai-consent";
+  const TABLE = { shared: "docs_shared", school: "docs_school", debrief: "docs_debrief" };
+  const err = (code, message) => Object.assign(new Error(message), { code, message });
+  const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* storage unavailable */ } };
+  const clone = (o) => (o == null ? o : JSON.parse(JSON.stringify(o)));
+
+  let client = null, session = null, uid = null, email = "";
+  /* server routes: Supabase Edge Functions when config.json names them (static hosting), else this site's /api */
+  let API = { claude: "/api/claude", deleteAccount: "/api/delete-account", headers: {} };
+  let readyResolve; const ready = new Promise((r) => { readyResolve = r; });
+
+  /* ---------------- backends: rows of { table, path, data } for the signed-in user ---------------- */
+  function supabaseBackend() {
+    const map = (e) => { const m = (e && e.message) || "Request failed"; if (/JWT|auth|permission|policy|42501/i.test(m + (e && e.code))) return err("not_granted", m); if (/fetch|network|Failed/i.test(m)) return err("unavailable", m); return err("unavailable", m); };
+    return {
+      async get(table, path) { const { data, error } = await client.from(table).select("data").eq("path", path).maybeSingle(); if (error) throw map(error); return data ? data.data : null; },
+      async list(table, prefix) { const { data, error } = await client.from(table).select("path,data").like("path", prefix.replace(/[%_\\]/g, "\\$&") + "%"); if (error) throw map(error); return data || []; },
+      async set(table, path, value) { const { error } = await client.from(table).upsert({ path, data: value }, { onConflict: "user_id,path" }); if (error) throw map(error); },
+      async del(table, path) { const { error } = await client.from(table).delete().eq("path", path); if (error) throw map(error); },
+      watch(onChange) {
+        try {
+          const ch = client.channel("perl-docs-" + uid);
+          for (const t of Object.values(TABLE)) ch.on("postgres_changes", { event: "*", schema: "public", table: t, filter: `user_id=eq.${uid}` }, (p) => onChange(t, (p.new && p.new.path) || (p.old && p.old.path)));
+          ch.subscribe();
+        } catch { /* live updates are a bonus; the app works without them */ }
+      }
+    };
+  }
+  function memoryBackend() {
+    const KEY = "perl.test.db";
+    const load = () => { try { return JSON.parse(lsGet(KEY) || "{}"); } catch { return {}; } };
+    const save = (db) => lsSet(KEY, JSON.stringify(db));
+    return {
+      async get(table, path) { const db = load(); return clone((db[table] || {})[path] ?? null); },
+      async list(table, prefix) { const db = load(); return Object.entries(db[table] || {}).filter(([p]) => p.startsWith(prefix)).map(([path, data]) => ({ path, data: clone(data) })); },
+      async set(table, path, value) { const db = load(); (db[table] = db[table] || {})[path] = clone(value); save(db); },
+      async del(table, path) { const db = load(); if (db[table]) delete db[table][path]; save(db); },
+      watch() {}
+    };
+  }
+  let backend = null;
+
+  /* ---------------- the db namespace (the subset of the artifact contract the app uses) ---------------- */
+  /* "data/users/<uid>/debrief/entries/e1" -> { table: "docs_debrief", path: "debrief/entries/e1" } */
+  function locate(full) {
+    const seg = String(full || "").split("/").filter(Boolean);
+    if (seg[0] !== "data" || seg[1] !== "users" || !seg[2]) throw err("invalid_argument", "Only data/users/<you>/... paths are stored");
+    if (seg[2] !== uid) throw err("not_granted", "That path belongs to someone else");
+    const rest = seg.slice(3); const table = TABLE[rest[0]];
+    if (!table) throw err("invalid_argument", `Unknown space "${rest[0]}"`);
+    return { table, path: rest.join("/"), full: seg.join("/") };
+  }
+  const listeners = new Set(); /* { kind: "doc"|"query", table, path, fire } */
+  function notify(table, path) {
+    for (const l of listeners) {
+      if (l.table !== table) continue;
+      if (l.kind === "doc" && l.path === path) l.fire();
+      if (l.kind === "query" && path && path.startsWith(l.path + "/") && !path.slice(l.path.length + 1).includes("/")) l.fire();
+    }
+  }
+  const META = { fromCache: false, hasPendingWrites: false };
+  const docSnap = (id, data) => ({ id, exists: data != null, data: () => (data == null ? undefined : clone(data)), metadata: META });
+  const leaf = (p) => p.split("/").pop();
+
+  function docRef(full) {
+    const loc = locate(full);
+    return {
+      id: leaf(loc.path), path: loc.full,
+      async get() { return docSnap(leaf(loc.path), await backend.get(loc.table, loc.path)); },
+      async set(data) { if (!data || typeof data !== "object") throw err("invalid_argument", "A document is an object"); await backend.set(loc.table, loc.path, clone(data)); notify(loc.table, loc.path); },
+      async update(data) { const cur = (await backend.get(loc.table, loc.path)) || {}; await backend.set(loc.table, loc.path, { ...cur, ...clone(data) }); notify(loc.table, loc.path); },
+      async delete() { await backend.del(loc.table, loc.path); notify(loc.table, loc.path); },
+      async acquire() { return { acquired: true }; },
+      onSnapshot(next, onError) {
+        let live = true; let seq = 0;
+        const fire = () => { const my = ++seq; backend.get(loc.table, loc.path).then((d) => { if (live && my === seq) next(docSnap(leaf(loc.path), d)); }, (e) => { if (live && onError) onError(e); }); };
+        const l = { kind: "doc", table: loc.table, path: loc.path, fire }; listeners.add(l); fire();
+        return () => { live = false; listeners.delete(l); };
+      },
+      collection(sub) { return collectionRef(loc.full + "/" + sub); }
+    };
+  }
+  const getField = (o, f) => String(f).split(".").reduce((a, k) => (a == null ? a : a[k]), o);
+  const OPS = { "==": (a, b) => a === b, "!=": (a, b) => a !== b, "<": (a, b) => a < b, "<=": (a, b) => a <= b, ">": (a, b) => a > b, ">=": (a, b) => a >= b, "array-contains": (a, b) => Array.isArray(a) && a.includes(b) };
+  function collectionRef(full, q = { where: [], order: null, limit: 0 }) {
+    const loc = locate(full);
+    const run = async () => {
+      const rows = (await backend.list(loc.table, loc.path + "/")).filter((r) => !r.path.slice(loc.path.length + 1).includes("/"));
+      let docs = rows.map((r) => ({ id: leaf(r.path), data: r.data }));
+      for (const [f, op, v] of q.where) docs = docs.filter((d) => (OPS[op] || (() => false))(getField(d.data, f), v));
+      if (q.order) { const [f, dir] = q.order; docs.sort((a, b) => { const x = getField(a.data, f), y = getField(b.data, f); const c = x == null ? -1 : y == null ? 1 : x < y ? -1 : x > y ? 1 : 0; return dir === "desc" ? -c : c; }); }
+      if (q.limit) docs = docs.slice(0, q.limit);
+      const snaps = docs.map((d) => docSnap(d.id, d.data));
+      return { docs: snaps, size: snaps.length, empty: !snaps.length, docChanges: () => snaps.map((doc, i) => ({ type: "added", doc, oldIndex: -1, newIndex: i })), metadata: META };
+    };
+    return {
+      path: loc.full,
+      doc(id) { return docRef(loc.full + "/" + (id || "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7))); },
+      async add(data) { const r = this.doc(); await r.set(data); return r; },
+      where(f, op, v) { return collectionRef(full, { ...q, where: [...q.where, [f, op, v]] }); },
+      orderBy(f, dir = "asc") { return collectionRef(full, { ...q, order: [f, dir] }); },
+      limit(n) { return collectionRef(full, { ...q, limit: n }); },
+      get: run,
+      onSnapshot(next, onError) {
+        let live = true; let seq = 0;
+        const fire = () => { const my = ++seq; run().then((s) => { if (live && my === seq) next(s); }, (e) => { if (live && onError) onError(e); }); };
+        const l = { kind: "query", table: loc.table, path: loc.path, fire }; listeners.add(l); fire();
+        return () => { live = false; listeners.delete(l); };
+      }
+    };
+  }
+  const db = Object.freeze({ doc: (p) => docRef(p), collection: (p) => collectionRef(p) });
+
+  /* ---------------- user ---------------- */
+  const user = Object.freeze({
+    id: async () => uid, me: async () => ({ id: uid, name: "", email, isMe: true }),
+    isOwner: () => true, canEdit: () => true, can: () => true,
+    profiles: async (ids) => Object.fromEntries((ids || []).map((i) => [i, { id: i, name: i === uid ? "You" : "", isMe: i === uid }])),
+    search: async () => []
+  });
+
+  /* ---------------- sample: Claude through /api/claude, after consent ---------------- */
+  function consentGiven() { return lsGet(CONSENT_KEY) === "yes"; }
+  function askConsent() {
+    if (consentGiven()) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const wrap = document.createElement("div"); wrap.className = "perl-gate"; wrap.setAttribute("role", "dialog"); wrap.setAttribute("aria-modal", "true"); wrap.setAttribute("aria-labelledby", "perl-ai-h");
+      wrap.innerHTML = `<div class="perl-card"><h2 id="perl-ai-h">Send this to Claude?</h2>
+        <p>To clean up a debrief, draft interview answers or answer a policy question, Perl sends the text involved to <b>Claude, an AI model made by Anthropic</b>, through this app's server. Anthropic processes it to write the reply.</p>
+        <p>Before a debrief leaves your device, Perl scans it for names, ID numbers, dates and rooms and asks you to remove them. Your school's rules on patient information still apply.</p>
+        <p class="perl-quiet">You can say no and keep using Perl: review debriefs yourself, and Ask falls back to keyword search. Change this later in Profile and settings.</p>
+        <div class="perl-row"><button type="button" class="perl-btn" data-a="no">Not now</button><button type="button" class="perl-btn perl-primary" data-a="yes">Allow Claude</button></div></div>`;
+      document.body.append(wrap);
+      const done = (ok) => { if (ok) lsSet(CONSENT_KEY, "yes"); wrap.remove(); resolve(ok); };
+      wrap.addEventListener("click", (e) => { const b = e.target.closest("[data-a]"); if (b) done(b.dataset.a === "yes"); });
+      wrap.querySelector('[data-a="yes"]').focus();
+    });
+  }
+  const PROMPT_MAX = 400000;
+  async function callClaude(input, opts = {}) {
+    if (!(await askConsent())) throw err("not_granted", "You chose not to send text to Claude.");
+    const messages = typeof input === "string" ? [{ role: "user", content: input }] : Array.isArray(input) ? input : null;
+    if (!messages || !messages.length) throw err("invalid_argument", "Nothing to send");
+    if (JSON.stringify(messages).length > PROMPT_MAX) throw err("prompt_too_large", "This is too long for one pass.");
+    if (MEMORY) {
+      const text = typeof window.PERL_FAKE_CLAUDE === "function" ? String(await window.PERL_FAKE_CLAUDE(messages, opts)) : "Test reply (APS-7).";
+      if (opts.onText) opts.onText({ text, delta: text });
+      return { text, truncated: false };
+    }
+    const { data: { session: s } } = await client.auth.getSession();
+    if (!s) throw err("session_expired", "Sign in again, then retry.");
+    let res;
+    try {
+      res = await fetch(API.claude, { method: "POST", signal: opts.signal, headers: { ...API.headers, "content-type": "application/json", authorization: "Bearer " + s.access_token }, body: JSON.stringify({ messages, tier: opts.modelTier || "default" }) });
+    } catch (e) { if (e && e.name === "AbortError") throw err("cancelled", "Cancelled"); throw err("unavailable", "Couldn't reach the server."); }
+    if (!res.ok || !res.body) { let j = {}; try { j = await res.json(); } catch { /* not JSON */ } throw err((j.error && j.error.code) || (res.status === 401 ? "session_expired" : res.status === 429 ? "rate_limited" : "unavailable"), (j.error && j.error.message) || "Claude is unavailable right now."); }
+    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "", text = "", truncated = false;
+    try {
+      for (;;) {
+        const { value, done } = await reader.read(); if (done) break;
+        buf += dec.decode(value, { stream: true }); let i;
+        while ((i = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (!line) continue;
+          const m = JSON.parse(line);
+          if (m.error) throw Object.assign(err(m.error.code || "unavailable", m.error.message || "Claude stopped."), { text });
+          if (m.delta) { text += m.delta; if (opts.onText) { try { opts.onText({ text, delta: m.delta }); } catch (e) { console.error(e); } } }
+          if (m.done) truncated = m.stop === "max_tokens";
+        }
+      }
+    } catch (e) { if (e && e.name === "AbortError") throw err("cancelled", "Cancelled"); throw e; }
+    return { text, truncated };
+  }
+  function parseJsonReply(t) {
+    const s = String(t).trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+    try { return JSON.parse(s); } catch { /* fall through */ }
+    const m = s.match(/[[{][\s\S]*[\]}]/); if (m) { try { return JSON.parse(m[0]); } catch { /* fall through */ } }
+    throw err("invalid_json", "The reply wasn't valid JSON.");
+  }
+  const sample = Object.assign((input, opts) => callClaude(input, opts), {
+    json: async (input, opts = {}) => {
+      const tail = "\n\nReply with only valid JSON: no prose, no code fences.";
+      const msgs = typeof input === "string" ? input + tail : (input || []).map((m, i, a) => (i === a.length - 1 && m.role === "user" ? { ...m, content: m.content + tail } : m));
+      return parseJsonReply((await callClaude(msgs, { ...opts, onText: undefined })).text);
+    },
+    limits: async () => ({ images: false, maxInputChars: PROMPT_MAX })
+  });
+
+  /* ---------------- downloads ---------------- */
+  const downloads = Object.freeze({
+    async save({ filename, data }) {
+      const blob = data instanceof Blob ? data : new Blob([data], { type: /\.ics$/.test(filename) ? "text/calendar" : /\.csv$/.test(filename) ? "text/csv" : /\.md$/.test(filename) ? "text/markdown" : "text/plain" });
+      const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = filename || "download.txt";
+      document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+    }
+  });
+
+  /* ---------------- the runtime the app already calls ---------------- */
+  const NS = { db, user, sample, downloads };
+  window.claude = Object.freeze({ use: async (name) => { if (!(name in NS)) return null; await ready; return NS[name]; } });
+
+  /* account controls for Profile and settings: sign out, AI consent, delete account */
+  window.PERL_ACCOUNT = Object.freeze({
+    email: () => email,
+    aiAllowed: () => consentGiven(),
+    setAiAllowed: (on) => lsSet(CONSENT_KEY, on ? "yes" : "no"),
+    async signOut() { if (client) await client.auth.signOut(); location.hash = ""; location.reload(); },
+    async deleteAccount() {
+      if (MEMORY) { lsSet("perl.test.db", "{}"); location.reload(); return; }
+      const { data: { session: s } } = await client.auth.getSession(); if (!s) throw err("session_expired", "Sign in again first.");
+      const r = await fetch(API.deleteAccount, { method: "POST", headers: { ...API.headers, authorization: "Bearer " + s.access_token } });
+      if (!r.ok) throw err("unavailable", "Couldn't delete your account. Try again.");
+      try { localStorage.clear(); } catch { /* fine */ }
+      await client.auth.signOut(); location.reload();
+    }
+  });
+
+  /* ---------------- sign-in ---------------- */
+  function signInGate() {
+    const wrap = document.createElement("div"); wrap.className = "perl-gate perl-solid"; wrap.setAttribute("role", "dialog"); wrap.setAttribute("aria-modal", "true"); wrap.setAttribute("aria-labelledby", "perl-in-h");
+    wrap.innerHTML = `<form class="perl-card" novalidate>
+      <h2 id="perl-in-h">Sign in to Perl</h2>
+      <p>Your plan and your journal are private to you. Enter your email and we'll send you a sign-in link.</p>
+      <label for="perl-email">Email</label><input id="perl-email" type="email" autocomplete="email" required>
+      <div class="perl-code" hidden><label for="perl-code">Paste the link from the email (or a 6-digit code)</label><input id="perl-code" autocomplete="one-time-code" spellcheck="false" placeholder="https://… or 123456"></div>
+      <p class="perl-msg" role="status" aria-live="polite"></p>
+      <div class="perl-row"><button type="submit" class="perl-btn perl-primary">Email me a sign-in link</button></div></form>`;
+    document.body.append(wrap);
+    const form = wrap.querySelector("form"), msg = wrap.querySelector(".perl-msg"), btn = wrap.querySelector("button"), code = wrap.querySelector(".perl-code");
+    let sent = false;
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault(); const em = wrap.querySelector("#perl-email").value.trim();
+      if (!/^\S+@\S+\.\S+$/.test(em)) { msg.textContent = "Enter a valid email address."; return; }
+      btn.disabled = true;
+      if (!sent) {
+        const { error } = await client.auth.signInWithOtp({ email: em, options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: true } });
+        btn.disabled = false;
+        if (error) { msg.textContent = error.message || "Couldn't send the email. Try again."; return; }
+        sent = true; code.hidden = false; btn.textContent = "Sign in";
+        msg.textContent = "Check your email and tap the link. Using the installed app? Long-press the link, copy it, and paste it here."; wrap.querySelector("#perl-code").focus(); return;
+      }
+      const v = wrap.querySelector("#perl-code").value.trim();
+      const hash = linkToken(v);
+      const { error } = hash ? await client.auth.verifyOtp({ token_hash: hash.token, type: hash.type })
+        : /^\d{6,10}$/.test(v) ? await client.auth.verifyOtp({ email: em, token: v, type: "email" })
+        : { error: { message: "bad input" } };
+      btn.disabled = false;
+      if (error) msg.textContent = "That link or code didn't work. Links work once and expire after an hour. Request a new email.";
+    });
+    wrap.querySelector("#perl-email").focus();
+    return wrap;
+  }
+  /* the sign-in link: https://<project>.supabase.co/auth/v1/verify?token=<hash>&type=magiclink|signup&redirect_to=... */
+  function linkToken(v) {
+    try { const u = new URL(v); const t = u.searchParams.get("token") || u.searchParams.get("token_hash"); if (!t) return null;
+      const ty = u.searchParams.get("type"); return { token: t, type: ty === "signup" ? "signup" : ty === "magiclink" ? "magiclink" : "email" }; }
+    catch { return null; }
+  }
+  function useSession(s) {
+    if (!s || !s.user) return false;
+    session = s; uid = s.user.id; email = s.user.email || "";
+    if (!backend) { backend = supabaseBackend(); backend.watch(notify); }
+    readyResolve(); return true;
+  }
+
+  async function start() {
+    if (MEMORY) { uid = "test-user"; email = "you@example.com"; backend = memoryBackend(); readyResolve(); return; }
+    let cfg;
+    for (const src of ["config.json", "/api/config"]) {
+      try { const r = await fetch(src, { cache: "no-store" }); if (!r.ok) continue; const c = await r.json(); if (c.supabaseUrl && c.supabaseAnonKey) { cfg = c; break; } } catch { /* try the next source */ }
+    }
+    try { if (!cfg) throw new Error("missing"); }
+    catch { document.body.insertAdjacentHTML("beforeend", `<div class="perl-gate perl-solid"><div class="perl-card"><h2>Perl isn't configured yet</h2><p>This copy is missing its Supabase settings: config.json, or SUPABASE_URL and SUPABASE_ANON_KEY on the server. See the setup steps in the README.</p></div></div>`); return; }
+    if (cfg.functionsUrl) API = { claude: cfg.functionsUrl + "/claude", deleteAccount: cfg.functionsUrl + "/delete-account", headers: { apikey: cfg.supabaseAnonKey } };
+    client = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType: "implicit", detectSessionInUrl: true, persistSession: true, autoRefreshToken: true } });
+    let gate = null;
+    client.auth.onAuthStateChange((_ev, s) => {
+      if (s && useSession(s)) { if (gate) { gate.remove(); gate = null; } if (/access_token=|[?&]code=/.test(location.hash + location.search)) history.replaceState(null, "", location.pathname + "#today"); }
+    });
+    const { data: { session: s } } = await client.auth.getSession();
+    if (!useSession(s)) gate = signInGate();
+  }
+  start();
+})();
