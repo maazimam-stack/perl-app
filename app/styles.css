@@ -190,6 +190,7 @@ a.pm-sec:hover:where(:not(.dbf, .dbf *)){border-color: var(--control);}
 .btn.quiet:hover:where(:not(.dbf, .dbf *)){background: var(--sunk); color: var(--text);}
 .btn.danger:where(:not(.dbf, .dbf *)){color: var(--negative);}
 .btn.small:where(:not(.dbf, .dbf *)){height: 32px; padding: 0 13px; font-size: 13px;}
+.tail .btn.join:where(:not(.dbf, .dbf *)){height: 28px; padding: 0 12px; background: var(--accent); color: var(--on-accent, #fff); border-color: transparent; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center;}
 .btn.icon:where(:not(.dbf, .dbf *)){width: var(--ctl); padding: 0;}
 .btn.icon.small:where(:not(.dbf, .dbf *)){width: 32px;}
 .btn[aria-pressed="true"]:where(:not(.dbf, .dbf *)){background: var(--active); border-color: var(--active);}
@@ -1003,6 +1004,11 @@ code:where(:not(.dbf, .dbf *)),.mono:where(:not(.dbf, .dbf *)){font-family: var(
 .ct-dates input:where(:not(.dbf, .dbf *)){height: 34px; padding: 0 8px; border: 1px solid var(--control); border-radius: var(--r-row); background: var(--raised); color: var(--text); font: inherit; font-variant-numeric: tabular-nums;}
 .ct-list > li.ct-row .tail:where(:not(.dbf, .dbf *)){display: flex; align-items: center; gap: 6px; justify-content: flex-end;}
 .ct-miss:where(:not(.dbf, .dbf *)){display: grid; gap: 8px; margin-top: 16px;}
+.ct-sum:where(:not(.dbf, .dbf *)){display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 4px 0 14px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2, rgba(127,127,127,.08)); font-size: 13.5px;}
+.ct-sum b:where(:not(.dbf, .dbf *)){font-weight: 600; margin-right: 4px; color: var(--muted);}
+.ct-pend:where(:not(.dbf, .dbf *)){margin: 0 0 16px; padding: 12px; border-radius: 10px; border: 1px solid var(--amber); }
+.ct-pend h3:where(:not(.dbf, .dbf *)){margin: 0 0 4px; font-size: 15px;}
+.ct-pend .hint:where(:not(.dbf, .dbf *)){margin: 0 0 8px;}
 .ct-chips:where(:not(.dbf, .dbf *)){display: flex; flex-wrap: wrap; gap: 8px;}
 .ct-chips .chip:where(:not(.dbf, .dbf *)){color: var(--text);}
 .ct-chips .chip small:where(:not(.dbf, .dbf *)){color: var(--muted); margin-left: 4px;}
@@ -1710,6 +1716,12 @@ code:where(:not(.dbf, .dbf *)),.mono:where(:not(.dbf, .dbf *)){font-family: var(
   .cn-sugg-main{flex-basis: 100%;}
   .cn-feed-main{flex-basis: 100%;}
 }
+
+/* Today: a connection that's failing or stale says so above everything, so nothing goes missing silently */
+.cn-health{display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--amber); background: var(--amber-wash);}
+.cn-health h2{margin: 0 0 2px; font-size: 15px; color: var(--amber-text);}
+.cn-health p{margin: 0; font-size: 13px; line-height: 19px; color: var(--text-2); max-width: 70ch;}
+.cn-health-act{display: flex; gap: 8px; flex-wrap: wrap;}
 
 /* SOURCE OF TRUTH. Originally generated once by tools/port_debrief.py from handoff/perl/, then edited by hand; edit this file directly. The port script is retired and refuses to run, so nothing regenerates or overwrites it. */
 /* Debrief space: Perl's components on the merged dark palette. Gold is retired: progress and completion take the Debrief accent.

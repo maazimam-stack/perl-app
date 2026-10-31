@@ -100,8 +100,15 @@ function normalize(src) {
   o.profile = { ...b.profile, ...((src && src.profile) || {}) };
   for (const k of ["rotations", "scheds", "electives", "askRecent"]) if (!Array.isArray(o[k])) o[k] = [];
   for (const k of ["req", "done"]) if (!o[k] || typeof o[k] !== "object" || Array.isArray(o[k])) o[k] = {};
+  /* a custom track's guessed block ("base", from an assigned track) never stands beside the student's own dates for the
+     same clerkship: their entry or the audit's wins, so a clerkship is never on the plan twice */
+  const ownNames = new Set(o.rotations.filter((r) => r && r.kind === "clerkship" && r.src !== "base").map((r) => r.name));
+  o.rotations = o.rotations.filter((r) => r && !(r.src === "base" && ownNames.has(r.name)));
   return o;
 }
+/* A guessed block whose dates are already over and that the student never confirmed probably didn't happen on those
+   dates (that's why the track is custom). It creates no deadlines and isn't shared with Debrief until confirmed. */
+function guessedPast(r) { return !!r && r.src === "base" && String(r.end || "") < isoD(today()); }
 let state = clone(BLANK);
 let mine = null; /* the student's own plan, held aside while the example sandbox is open */
 let booted = false;
@@ -109,7 +116,7 @@ let booted = false;
    School data (checklist, electives, grades, check-offs, Ask history) never goes through it. */
 const own = () => (state.example ? (mine || BLANK) : state);
 window.PERL_SHARED = Object.freeze({
-  rotations: () => clone(own().rotations || []),
+  rotations: () => clone((own().rotations || []).filter((r) => !guessedPast(r))),
   scheds: () => clone(own().scheds || []),
   profile: () => ({ name: own().profile.name || "", myName: own().profile.myName || "" }),
   /* School's dated obligations (rotation, profile and calendar deadlines; clerkship-schedule items are already shared above) */
@@ -445,7 +452,7 @@ const CLERKSHIPS = ["Family Medicine", "Internal Medicine", "Neurology", "Psychi
 /* Deadlines each rotation creates under the policies. */
 function rotationItems() {
   const out = [];
-  for (const r of state.rotations || []) {
+  for (const r of (state.rotations || []).filter((x) => !guessedPast(x))) {
     const s = parseD(r.start), e = parseD(r.end);
     if (!s || !e || e < s) continue;
     const nm = r.name;
@@ -495,7 +502,7 @@ function fmtRange(a, b) {
 const ROT_SHORT = { "Obstetrics and Gynecology": "OB/GYN", "Internal Medicine Sub-Internship": "IM Sub-I" };
 function rotShort(n) { return ROT_SHORT[n] || n; }
 function rotsParsed() {
-  return (state.rotations || []).map((r) => ({ ...r, s: parseD(r.start), e: parseD(r.end) })).filter((r) => r.s && r.e && r.e >= r.s).sort((a, b) => a.s - b.s);
+  return (state.rotations || []).filter((r) => !guessedPast(r)).map((r) => ({ ...r, s: parseD(r.start), e: parseD(r.end) })).filter((r) => r.s && r.e && r.e >= r.s).sort((a, b) => a.s - b.s);
 }
 function rotById(id) { return rotsParsed().find((r) => r.id === id) || null; }
 function currentRotation() { const t = today(); return rotsParsed().filter((r) => r.s <= t && r.e >= t).sort((a, b) => a.e - b.e)[0] || null; }
@@ -972,7 +979,8 @@ function dateRow(u) {
   const sub = u.feed ? [u.source, u.rule].filter(Boolean).join(" · ") : u.rule;
   const out = u.feed ? (u.url ? `<a class="gcal" href="${esc(u.url)}" target="_blank" rel="noopener" title="Open in ${esc(u.source || "the source")}" aria-label="Open ${esc(u.label)} in ${esc(u.source || "the source")}">${CAL_PLUS}</a>` : "")
     : `<a class="gcal" href="${esc(gcalUrl(u))}" target="_blank" rel="noopener" title="Add to Google Calendar" aria-label="Add ${esc(u.label)} to Google Calendar">${CAL_PLUS}</a>`;
-  return `<li class="st-${st}">${chk}<div class="when num">${when}</div><div class="what"><span class="t">${esc(u.label)}</span>${sub ? `<small>${esc(sub)}</small>` : ""}</div><div class="tail">${dt ? `<span class="due ${tone} num">${tone === "amber" || tone === "red" ? `<i class="dot ${st === "breach" ? "breach" : "soon"}"></i>` : ""}${esc(dt)}</span>` : ""}${u.code ? codeBtn(u.code) : ""}${out}</div></li>`;
+  const join = u.feed && u.join && /^https:\/\//.test(u.join) && diffDays(today(), u.date) >= 0 ? `<a class="btn small join" href="${esc(u.join)}" target="_blank" rel="noopener" aria-label="Join ${esc(u.label)}">Join</a>` : "";
+  return `<li class="st-${st}">${chk}<div class="when num">${when}</div><div class="what"><span class="t">${esc(u.label)}</span>${sub ? `<small>${esc(sub)}</small>` : ""}</div><div class="tail">${join}${dt ? `<span class="due ${tone} num">${tone === "amber" || tone === "red" ? `<i class="dot ${st === "breach" ? "breach" : "soon"}"></i>` : ""}${esc(dt)}</span>` : ""}${u.code ? codeBtn(u.code) : ""}${out}</div></li>`;
 }
 
 /* ----- files ----- */
@@ -1137,7 +1145,7 @@ function rotationsPanel() {
     const rank = { soon: 0, slipped: 0, breach: 0, later: 1, done: 2, past: 2 };
     const ds = ri.filter((x) => x.rot === r.id && x.short !== "Ends" && x.short !== "Midpoint").map((x) => ({ ...x, st: itemState(x) })).sort((a, b) => rank[a.st] - rank[b.st] || a.date - b.date);
     const g = gradeStatus(r);
-    return `<li><div class="what"><span class="sw k-${esc(r.kind)}" aria-hidden="true"></span><button class="link strong" data-act="open-rot" data-id="${esc(r.id)}">${esc(r.name)}</button><small>${esc(ROT_KINDS[r.kind] || "Rotation")} · ${s ? fmtShort(s) : "—"} to ${e ? fmtShort(e) : "—"}${r.src === "track" && state.profile.track ? ` · ${esc(trackLabel())}` : r.src === "audit" ? " · from your audit" : r.src === "base" ? " · confirm dates" : ""}${hasDays(r) ? " · daily schedule in" : ""}</small></div>
+    return `<li><div class="what"><span class="sw k-${esc(r.kind)}" aria-hidden="true"></span><button class="link strong" data-act="open-rot" data-id="${esc(r.id)}">${esc(r.name)}</button><small>${esc(ROT_KINDS[r.kind] || "Rotation")} · ${s ? fmtShort(s) : "—"} to ${e ? fmtShort(e) : "—"}${r.src === "track" && state.profile.track ? ` · ${esc(trackLabel())}` : r.src === "audit" ? " · from your audit" : r.src === "base" ? (guessedPast(r) ? " · not confirmed, so no deadlines" : " · confirm dates") : ""}${hasDays(r) ? " · daily schedule in" : ""}</small></div>
       <div class="rot-dates">${ds.map((x) => `<span class="dchip ${x.st}">${["soon", "slipped", "breach"].includes(x.st) ? `<i class="dot ${x.st === "breach" ? "breach" : "soon"}"></i>` : ""}${esc(x.short)} <b class="num">${fmtShort(x.date)}</b>${x.st === "done" ? " · done" : x.st === "slipped" ? " · not checked off" : ""}</span>`).join("")}
         ${g ? `<span class="gp"><label for="gp-${esc(r.id)}">Grade posted</label><input type="date" id="gp-${esc(r.id)}" data-act="grade-posted" data-id="${esc(r.id)}" value="${esc(r.gradePosted || "")}"><span class="pill ${g[0]}">${esc(g[1])}</span></span>` : ""}</div>
       <div class="tail">${st}<button class="btn quiet small" data-act="del-rot" data-id="${esc(r.id)}" aria-label="Remove ${esc(r.name)}">Remove</button></div></li>`;
@@ -1269,7 +1277,12 @@ function conflictsPanel() {
 }
 /* Today answers three things first: where you are and what's next, today's habits, and today's debrief. Then what's coming. */
 function vToday() {
+  const pend = state.example ? [] : (state.rotations || []).filter(guessedPast);
+  const pendCard = pend.length ? `<section class="cn-health" role="status" aria-labelledby="h-ct-alert"><div><h2 id="h-ct-alert">Confirm ${pend.length === 1 ? "a past clerkship" : `${pend.length} past clerkships`}</h2>
+      <p>${esc(pend.map((r) => `${rotShort(r.name)} ${fmtShort(parseD(r.start))}–${fmtShort(parseD(r.end))}`).join(", "))} came from a standard track's dates, so ${pend.length === 1 ? "its" : "their"} evaluations, grades and grade-review deadlines aren't counted until you confirm or fix ${pend.length === 1 ? "it" : "them"}.</p></div>
+      <div class="cn-health-act"><a class="btn small" href="#schedule" data-act="go-track">Review</a></div></section>` : "";
   return `<div class="home">
+    ${pendCard}${modToday("alert")}
     ${heroHtml()}
     <div class="today-pair">${modToday("main")}<section class="dbf dbf-today" id="view-today" aria-label="Debrief"></section></div>
     ${comingUpPanel()}
@@ -1643,7 +1656,7 @@ function setCustomRotations(rots, base) {
   if (cl.length) { pr.ciStart = cl[0].start; pr.ciEnd = cl[cl.length - 1].end; }
 }
 function missingClerkships() {
-  const have = new Set((state.rotations || []).filter((r) => r.kind === "clerkship").map((r) => r.name));
+  const have = new Set((state.rotations || []).filter((r) => r.kind === "clerkship" && !guessedPast(r)).map((r) => r.name));
   return CLERKSHIPS.filter((n) => !have.has(n) && clerkState(n) !== "done");
 }
 function nextSlot(name) {
@@ -1674,8 +1687,17 @@ function rotPill(r) {
 const SRC_TAG = { audit: "From your audit", base: "From your assigned track, confirm", you: "Added by you", track: "From your track" };
 function customTrackPanel(opts) {
   opts = opts || {};
-  const pr = state.profile; const rots = (state.rotations || []).filter((r) => r.kind === "clerkship").sort((a, b) => String(a.start).localeCompare(String(b.start)));
-  const miss = missingClerkships(); const s = schedule();
+  const pr = state.profile; const all = (state.rotations || []).filter((r) => r.kind === "clerkship").sort((a, b) => String(a.start).localeCompare(String(b.start)));
+  const pend = all.filter(guessedPast); const rots = all.filter((r) => !guessedPast(r));
+  const miss = missingClerkships(); const s = schedule(); const t = today();
+  const nowR = rots.find((r) => parseD(r.start) <= t && parseD(r.end) >= t); const nextR = rots.find((r) => parseD(r.start) > t);
+  const doneN = CLERKSHIPS.filter((n) => clerkState(n) === "done");
+  const left = CLERKSHIPS.filter((n) => clerkState(n) !== "done" && !(nowR && nowR.name === n));
+  const summary = `<p class="ct-sum">${nowR ? `<span><b>Now</b> ${esc(rotShort(nowR.name))} <small class="num">to ${esc(fmtShort(parseD(nowR.end)))}</small></span>` : ""}${nextR ? `<span><b>Next</b> ${esc(rotShort(nextR.name))} <small class="num">${esc(fmtShort(parseD(nextR.start)))}</small></span>` : ""}<span><b>Done</b> ${doneN.length ? esc(doneN.map((n) => TRACK_SHORT[n] || n).join(", ")) : "none yet"}</span><span><b>Still to do</b> ${left.length ? esc(left.map((n) => TRACK_SHORT[n] || n).join(", ")) : "nothing"}</span></p>`;
+  const prow = (r) => `<li class="ct-row ct-confirm">
+      <div class="what"><span class="t">${esc(r.name)}</span><small>Track ${esc(pr.trackBase || "")} had this here. Not counted until you say so.</small></div>
+      <div class="ct-dates"><label class="sr" for="cs-${esc(r.id)}">${esc(r.name)} starts</label><input type="date" id="cs-${esc(r.id)}" data-act="ct-date" data-id="${esc(r.id)}" data-k="start" value="${esc(r.start)}"><span aria-hidden="true">to</span><label class="sr" for="ce-${esc(r.id)}">${esc(r.name)} ends</label><input type="date" id="ce-${esc(r.id)}" data-act="ct-date" data-id="${esc(r.id)}" data-k="end" value="${esc(r.end)}"></div>
+      <div class="tail"><button class="btn small" data-act="ct-confirm" data-id="${esc(r.id)}">Yes, these dates</button><button class="btn quiet small" data-act="del-rot" data-id="${esc(r.id)}" aria-label="${esc(r.name)} didn't happen then: remove it">Didn't happen</button></div></li>`;
   const row = (r) => `<li class="ct-row${r.src === "base" ? " ct-confirm" : ""}">
       <div class="what"><span class="t">${esc(r.name)}</span><small>${esc(SRC_TAG[r.src] || SRC_TAG.you)}</small></div>
       <div class="ct-dates"><label class="sr" for="cs-${esc(r.id)}">${esc(r.name)} starts</label><input type="date" id="cs-${esc(r.id)}" data-act="ct-date" data-id="${esc(r.id)}" data-k="start" value="${esc(r.start)}"><span aria-hidden="true">to</span><label class="sr" for="ce-${esc(r.id)}">${esc(r.name)} ends</label><input type="date" id="ce-${esc(r.id)}" data-act="ct-date" data-id="${esc(r.id)}" data-k="end" value="${esc(r.end)}"></div>
@@ -1684,6 +1706,8 @@ function customTrackPanel(opts) {
   return `<section class="panel" aria-labelledby="h-ct" id="custom-track">
     <div class="panel-head"><h2 id="h-ct">${opts.title || "Your clerkship track"}</h2><span class="aside">${esc(trackLabel())}</span></div>
     <p class="tk-lead">${opts.lead || "Your own sequence. Change a date and Today, the Calendar, deadlines and your debriefs follow."}</p>
+    ${all.length ? summary : ""}
+    ${pend.length ? `<div class="ct-pend" role="group" aria-labelledby="h-ct-pend"><h3 id="h-ct-pend">Did ${pend.length === 1 ? "this" : "these"} happen?</h3><p class="hint">${pend.length === 1 ? "This block is" : "These blocks are"} already over and came from a standard track's dates, not yours. ${pend.length === 1 ? "It creates" : "They create"} no deadlines and ${pend.length === 1 ? "doesn't" : "don't"} tag your debriefs until you confirm. Fix the dates if they were different.</p><ul class="list ct-list">${pend.map(prow).join("")}</ul></div>` : ""}
     ${rots.length ? `<ul class="list ct-list">${rots.map(row).join("")}</ul>` : `<div class="empty">No clerkships yet. Add the ones you know below.</div>`}
     ${miss.length ? `<div class="ct-miss"><span class="label">Still to schedule</span><div class="ct-chips">${miss.map((n) => { const sl = nextSlot(n); return `<button class="chip" data-act="ct-add" data-n="${esc(n)}" aria-label="Add ${esc(n)} starting ${esc(fmtShort(parseD(sl.start)))}">+ ${esc(TRACK_SHORT[n] || n)} <small class="num">${esc(fmtShort(parseD(sl.start)))}</small></button>`; }).join("")}</div><span class="hint">Adds it at the next open block; adjust the dates once you know them.</span></div>` : rots.length ? `<p class="hint mt8">Every core clerkship is on your plan or done.</p>` : ""}
     ${bases.length && !opts.noBase ? `<div class="ct-base"><label for="ct-base">Assigned track</label><select id="ct-base" data-act="ct-base"><option value="">None</option>${bases.map((k) => `<option value="${esc(k)}" ${pr.trackBase === k ? "selected" : ""}>Track ${esc(k)}</option>`).join("")}</select><span class="hint">Fills the clerkships your audit doesn't list yet from that track's dates, for you to confirm.</span></div>` : ""}
@@ -2325,7 +2349,7 @@ document.addEventListener("click", (ev) => {
     case "drop-add": addDroppedSchedule(); break;
     case "sched-del": { const sc = (state.scheds || []).find((x) => x.id === t.dataset.id); if (sc) removeWithUndo("scheds", sc.id, `the ${rotShort(sc.name)} schedule`); break; }
     case "go-drop": ev.preventDefault(); go("schedule"); setTimeout(() => focusSection("drop-sched"), 60); break;
-    case "go-track": ev.preventDefault(); go("schedule"); setTimeout(() => focusSection("track"), 60); break;
+    case "go-track": ev.preventDefault(); go("schedule"); setTimeout(() => focusSection(state.profile.track === "custom" ? "custom-track" : "track"), 60); break;
     case "theme-toggle": setMode(themeNow() === "dark" ? "light" : "dark"); if (ui.view === "profile") render(); refocus('.me.open [data-act="theme-toggle"]'); break;
     case "theme": setTheme(t.dataset.v); render(); refocus(`[data-act="theme"][data-v="${t.dataset.v}"]`); break;
     case "single-keys": { try { localStorage.setItem(KEYS_KEY, t.checked ? "on" : "off"); } catch { /* storage unavailable */ } toast(t.checked ? "Single-key shortcuts on." : "Single-key shortcuts off."); break; }
@@ -2376,8 +2400,8 @@ document.addEventListener("click", (ev) => {
     case "su-undo": ui.setupAudit = null; ui.setupErr = ""; render(); refocus("#su-file"); break;
     case "make-custom": makeCustom(); break;
     case "ct-add": { const n = t.dataset.n; const sl = nextSlot(n); const rot = { id: "c" + Date.now().toString(36), name: n, kind: "clerkship", start: sl.start, end: sl.end, src: "you" };
-      if (state.profile.track !== "custom") makeCustom(); state.rotations.push(rot); becomeMine(); persist(); render(); refocus(`#cs-${CSS.escape(rot.id)}`); toast(`${rotShort(n)} added ${fmtShort(parseD(sl.start))} to ${fmtShort(parseD(sl.end))}. Adjust the dates if they're different.`); break; }
-    case "ct-confirm": { const r = (state.rotations || []).find((x) => x.id === t.dataset.id); if (r) { r.src = "you"; persist(); render(); toast(`${rotShort(r.name)} dates confirmed.`); } break; }
+      if (state.profile.track !== "custom") makeCustom(); state.rotations = state.rotations.filter((r) => !(r.src === "base" && r.name === n)); state.rotations.push(rot); becomeMine(); persist(); render(); refocus(`#cs-${CSS.escape(rot.id)}`); toast(`${rotShort(n)} added ${fmtShort(parseD(sl.start))} to ${fmtShort(parseD(sl.end))}. Adjust the dates if they're different.`); break; }
+    case "ct-confirm": { const r = (state.rotations || []).find((x) => x.id === t.dataset.id); if (r) { r.src = "you"; persist(); render(); refocus("#h-ct"); toast(`${rotShort(r.name)} dates confirmed.`); } break; }
     case "example-enter": if (!state.example) { mine = state; state = normalize(clone(EXAMPLE)); seedExample(); } go("today"); break;
     case "example-exit": if (mine) { state = mine; mine = null; } ui.ask.turns = []; go(state.profile.setupDone ? "today" : "setup"); break;
     case "recent-clear": state.askRecent = []; persist(); render(); break;
@@ -2417,9 +2441,13 @@ document.addEventListener("change", (ev) => {
   if (t.id === "drop-clerk") { if (ui.drop) ui.drop.clerk = t.value; render(); return; }
   if (t.matches("[data-act='ct-date']")) {
     const r = (state.rotations || []).find((x) => x.id === t.dataset.id); if (!r || !parseD(t.value)) return;
-    const k = t.dataset.k; const other = k === "start" ? r.end : r.start;
-    if ((k === "start" && other && t.value > other) || (k === "end" && other && t.value < other)) { toast("The end date is before the start date."); t.value = r[k]; return; }
-    r[k] = t.value; if (r.src === "base") r.src = "you"; if (state.profile.track !== "custom") makeCustom(); becomeMine(); persist(); toast(`${rotShort(r.name)}: ${fmtShort(parseD(r.start))} to ${fmtShort(parseD(r.end))}.`); return;
+    const k = t.dataset.k; const other = k === "start" ? r.end : r.start; const wasPending = guessedPast(r);
+    if (k === "end" && other && t.value < other) { toast("The end date is before the start date."); t.value = r[k]; return; }
+    /* a later start moves the whole block: the end keeps the block's length, so a rotation can be moved with one field */
+    if (k === "start" && other && t.value > other) { const len = Math.max(0, diffDays(parseD(r.start), parseD(r.end))); r.end = isoD(addDays(parseD(t.value), len)); }
+    r[k] = t.value; if (r.src === "base") r.src = "you"; if (state.profile.track !== "custom") makeCustom(); becomeMine(); persist(); toast(`${rotShort(r.name)}: ${fmtShort(parseD(r.start))} to ${fmtShort(parseD(r.end))}.`);
+    if (wasPending || k === "start") { render(); refocus(`#${CSS.escape(t.id)}`); }
+    return;
   }
   if (t.id === "ct-base") { const base = t.value; const auditRots = (state.rotations || []).filter((r) => r.kind === "clerkship" && r.src === "audit").map((r) => ({ name: r.name, code: r.id.split("-")[1] || "", start: r.start, end: r.end }));
     const mineRots = (state.rotations || []).filter((r) => r.kind === "clerkship" && r.src === "you");

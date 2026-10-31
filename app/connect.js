@@ -233,7 +233,15 @@ function expand(start, rule, stop) {
   return out;
 }
 function calName(text) { const m = String(text || "").replace(/\r\n[ \t]/g, "").match(/^X-WR-CALNAME(?:;[^:\n]*)?:(.*)$/m); return m ? clip(unescapeIcs(m[1]), 60) : ""; }
-/* events in the window [from, to] (local dates, inclusive); descriptions are never kept */
+/* a meeting's join link (Zoom, Teams, Google Meet, Webex), found in whatever text an event carries. Only https links on
+   these hosts count, and only the link itself is kept, never the text around it. */
+const JOIN_RE = /https:\/\/(?:[a-z0-9-]+\.)*(?:zoom\.us\/(?:j|my|w|s)\/[^\s"'<>()\[\]]+|zoomgov\.com\/j\/[^\s"'<>()\[\]]+|teams\.microsoft\.com\/l\/meetup-join\/[^\s"'<>]+|teams\.live\.com\/meet\/[^\s"'<>]+|meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}|webex\.com\/(?:meet|join)\/[^\s"'<>]+|webex\.com\/[a-z0-9-]+\/j\.php\?[^\s"'<>]+)/i;
+function joinOf(...xs) {
+  for (const x of xs) { const m = String(x || "").match(JOIN_RE); if (m) return m[0].replace(/[.,;:!?>]+$/, "").slice(0, 600); }
+  return "";
+}
+
+/* events in the window [from, to] (local dates, inclusive); descriptions are never kept (only a join link found in one) */
 function parseIcs(text, win) {
   const from = A.parseD(win && win.from) || A.addDays(A.today(), -FEED_BACK); const to = A.parseD(win && win.to) || A.addDays(A.today(), FEED_FWD);
   const stop = new Date(to.getFullYear(), to.getMonth(), to.getDate(), 23, 59, 59);
@@ -263,7 +271,8 @@ function parseIcs(text, win) {
     if (dur == null || dur < 0) dur = st.allDay ? DAY : 0;
     let title = clip(unescapeIcs(raw.SUMMARY ? raw.SUMMARY.value : ""), 120) || "(No title)"; let course = "";
     const cm = title.match(/^(.*?)\s*\[([^\]]{1,80})\]\s*$/); if (cm && cm[1]) { title = cm[1].trim(); course = cm[2].trim(); }   /* Canvas: "Assignment [Course]" */
-    const base = { uid: clip(unescapeIcs(raw.UID ? raw.UID.value : ""), 200) || uid(), title, course, location: clip(unescapeIcs(raw.LOCATION ? raw.LOCATION.value : ""), 100), url: /^https?:\/\//i.test(raw.URL ? raw.URL.value.trim() : "") ? raw.URL.value.trim().slice(0, 500) : "", allDay: st.allDay, dur };
+    const base = { uid: clip(unescapeIcs(raw.UID ? raw.UID.value : ""), 200) || uid(), title, course, location: clip(unescapeIcs(raw.LOCATION ? raw.LOCATION.value : ""), 100), url: /^https?:\/\//i.test(raw.URL ? raw.URL.value.trim() : "") ? raw.URL.value.trim().slice(0, 500) : "", allDay: st.allDay, dur,
+      join: joinOf(raw["X-MICROSOFT-SKYPETEAMSMEETINGURL"] && raw["X-MICROSOFT-SKYPETEAMSMEETINGURL"].value, raw.LOCATION && unescapeIcs(raw.LOCATION.value), raw.URL && raw.URL.value, raw.DESCRIPTION && unescapeIcs(raw.DESCRIPTION.value)) };
     if (raw["RECURRENCE-ID"]) { const rid = parseDt(raw["RECURRENCE-ID"].value, raw["RECURRENCE-ID"].params, defaultTz); overrides.push({ base, start: st.date, rid: rid ? rid.date : null }); }
     else masters.push({ raw, base, start: st.date });
   }
@@ -276,6 +285,7 @@ function parseIcs(text, win) {
     const e = { uid: recurring ? `${base.uid}@${date}` : base.uid, date, time: base.allDay ? "" : fmtTime(t), title: base.title, location: base.location, url: base.url, allDay: base.allDay, sort: t.getTime() };
     if (end > date) e.end = end;
     if (base.course) e.course = base.course;
+    if (base.join) e.join = base.join;
     out.push(e);
   };
   for (const m of masters) {
@@ -312,7 +322,7 @@ async function syncFeed(f, manual) {
   const u = U(); if (u.busy[f.id]) return; u.busy[f.id] = true; if (manual) refreshIfShown();
   try {
     const text = await fetchIcs(f.url);
-    f.events = parseIcs(text, null); f.status = "ok"; f.error = "";
+    f.events = parseIcs(text, null); f.status = "ok"; f.error = ""; f.okAt = Date.now();
     if (!f.name) f.name = calName(text) || KIND_NAME[f.kind] || "Calendar";
   } catch (e) { f.status = "error"; f.error = (e && e.message) || "Couldn't sync."; }
   f.lastSync = Date.now();
@@ -390,7 +400,7 @@ async function accessToken() {
 }
 async function graph(url) {
   const tok = await accessToken();
-  let r; try { r = await fetch(url.startsWith("http") ? url : GRAPH + url, { headers: { authorization: "Bearer " + tok, accept: "application/json", prefer: `outlook.timezone="${localTz()}"` } }); }
+  let r; try { r = await fetch(url.startsWith("http") ? url : GRAPH + url, { headers: { authorization: "Bearer " + tok, accept: "application/json", prefer: `outlook.timezone="${localTz()}", outlook.body-content-type="text"` } }); }
   catch { throw fail("unavailable", "Couldn't reach Outlook. Check your connection and try again."); }
   if (r.status === 401) { dropTokens(); throw fail("attention", SIGN_IN_AGAIN); }
   if (r.status === 403) throw fail("attention", "Outlook refused the request. Sign in again and allow calendar and mail access.");
@@ -409,11 +419,13 @@ function fromGraph(ev) {
   const st = parse(ev.start); if (!st || isNaN(st)) return null; const en = parse(ev.end);
   const e = { uid: String(ev.id || uid()).slice(0, 200), date: iso(st), time: ev.isAllDay ? "" : fmtTime(st), title: clip(ev.subject || "(No subject)", 120), location: clip((ev.location && ev.location.displayName) || "", 100), url: /^https?:\/\//.test(ev.webLink || "") ? String(ev.webLink).slice(0, 500) : "", allDay: !!ev.isAllDay };
   if (en && !isNaN(en)) { const end = iso(new Date(en.getTime() - 1)); if (end > e.date) e.end = end; }
+  const join = joinOf(ev.onlineMeeting && ev.onlineMeeting.joinUrl, ev.onlineMeetingUrl, ev.location && ev.location.displayName, ev.body && ev.body.content, ev.bodyPreview);
+  if (join) e.join = join;   /* the body is read for this link only and never stored */
   return e;
 }
 async function syncCalendar(ms) {
   const t = A.today(); const a = A.addDays(t, -MS_BACK), b = A.addDays(t, MS_FWD + 1);
-  let url = `${GRAPH}/me/calendarView?startDateTime=${encodeURIComponent(a.toISOString())}&endDateTime=${encodeURIComponent(b.toISOString())}&$select=${encodeURIComponent("subject,start,end,location,isAllDay,webLink")}&$top=250`;
+  let url = `${GRAPH}/me/calendarView?startDateTime=${encodeURIComponent(a.toISOString())}&endDateTime=${encodeURIComponent(b.toISOString())}&$select=${encodeURIComponent("subject,start,end,location,isAllDay,webLink,onlineMeeting,onlineMeetingUrl,body")}&$top=250`;
   const out = [];
   for (let page = 0; page < 10 && url && out.length < MAX_EVENTS; page++) {
     const j = await graph(url);
@@ -430,7 +442,7 @@ async function syncMs(manual) {
   try {
     if (!ms.account) { const me = await graph("/me"); ms.account = clip(me.mail || me.userPrincipalName || me.displayName || "", 120); const t = tokens(); if (t) setTokens({ ...t, account: ms.account }); }
     await syncCalendar(ms);
-    ms.status = "ok"; ms.error = ""; ms.lastSync = Date.now();
+    ms.status = "ok"; ms.error = ""; ms.lastSync = Date.now(); ms.okAt = ms.lastSync;
     if (manual) { u.msBusy = false; save(); refreshIfShown(); await scanMail(false); return; }
   } catch (e) { ms.status = e && e.kind === "attention" ? "attention" : "error"; ms.error = (e && e.message) || "Couldn't sync Outlook."; ms.lastSync = Date.now(); }
   u.msBusy = false; save(); refreshIfShown();
@@ -561,7 +573,8 @@ function dismissSuggestion(id) {
 /* ================= what Today and the Calendar read ================= */
 function item(e, source) {
   const date = A.parseD(e.date); if (!date) return null;
-  return { date, label: e.title, rule: [e.time, e.location || e.course].filter(Boolean).join(" · "), code: "", w: DUE_RE.test(e.title) || /^event-assignment-/.test(e.uid || "") ? 3 : 1, source, url: e.url || "", time: e.time || "", feed: true, uid: e.uid };
+  const loc = e.join && e.location && joinOf(e.location) ? "" : e.location;   /* a bare Zoom URL as the location is shown as the Join button instead */
+  return { date, label: e.title, rule: [e.time, loc || e.course].filter(Boolean).join(" · "), code: "", w: DUE_RE.test(e.title) || /^event-assignment-/.test(e.uid || "") ? 3 : 1, source, url: e.url || "", join: e.join || "", time: e.time || "", feed: true, uid: e.uid };
 }
 function feedItems() {
   if (!A.booted || A.state.example) return []; const c = doc(); if (!c) return [];
@@ -575,6 +588,31 @@ function feedItems() {
   return out;
 }
 window.PERL_FEEDS = () => { try { return feedItems(); } catch { return []; } };
+
+/* ================= sync health: nothing goes missing silently ================= */
+const STALE_MS = 24 * 3600 * 1000;
+function problems() {
+  if (!STANDALONE || !A.booted || A.state.example) return []; const c = doc(); if (!c) return [];
+  const out = []; const now = Date.now();
+  const check = (name, s, last) => {
+    if (s.status === "error" || s.status === "attention") out.push({ name, why: s.error || "The last sync failed." });
+    else if (last && now - last > STALE_MS) out.push({ name, why: `Last synced ${ago(last)}.` });
+  };
+  for (const f of Array.isArray(c.feeds) ? c.feeds : []) check(f.name || KIND_NAME[f.kind] || "Calendar", f, f.okAt || f.lastSync);
+  if (c.ms) {
+    const last = c.ms.okAt || c.ms.lastSync;
+    if (tokens()) check("Outlook", c.ms, last);
+    /* Microsoft sign-in lives on one device; the events it synced are shared, so only a stale copy is a problem */
+    else if (last && now - last > STALE_MS) out.push({ name: "Outlook", why: `Last synced ${ago(last)}. Outlook syncs from the device where you signed in to Microsoft: open Charted there, or sign in on this one in Connections.` });
+  }
+  return out;
+}
+function healthCard() {
+  const ps = problems(); if (!ps.length) return "";
+  return `<section class="cn-health" role="alert" aria-labelledby="h-cn-health"><div><h2 id="h-cn-health">${ps.length === 1 ? `${esc(ps[0].name)} isn't up to date` : `${ps.length} connections aren't up to date`}</h2>
+    <p>Things due there may be missing below. ${ps.map((p) => `<b>${esc(p.name)}:</b> ${esc(p.why)}`).join(" ")}</p></div>
+    <div class="cn-health-act"><button class="btn small" data-act="cn-sync-all" id="cn-health-sync">Sync now</button><a class="btn quiet small" href="#connect">Connections</a></div></section>`;
+}
 
 /* ================= sync scheduler ================= */
 let timer = 0, started = false;
@@ -705,7 +743,7 @@ const acts = {
   "cn-scan": () => scanMail(true),
   "cn-sugg-add": (el) => { const s = U().sugg.find((x) => x.id === el.dataset.id); acceptSuggestion(el.dataset.id); if (s) A.toast(`Added: ${s.label}, ${A.fmtShort(A.parseD(s.date))}.`); rerender(U().sugg.length ? `#cn-add-s-${CSS.escape(U().sugg[0].id)}` : "#cn-scan"); },
   "cn-sugg-dismiss": (el) => { dismissSuggestion(el.dataset.id); rerender(U().sugg.length ? `#cn-dis-s-${CSS.escape(U().sugg[0].id)}` : "#cn-scan"); },
-  "cn-sync-all": () => { syncAll(true); A.toast("Syncing your connections…"); rerender("#cn-sync-all"); }
+  "cn-sync-all": (el) => { syncAll(true).then(() => { if (A.ui.view === "today") A.render(); }); A.toast("Syncing your connections…"); if (el && el.id === "cn-health-sync") return; rerender("#cn-sync-all"); }
 };
 const on = {
   change(ev) {
@@ -744,5 +782,5 @@ const on = {
 /* read-only helpers for tests; no data */
 window.PERL_CONNECT = Object.freeze({ parseIcs: (text, win) => parseIcs(text, win), heuristic: (msgs) => heuristic(msgs || []), mailPrompt: (msgs) => mailPrompt(msgs || [], iso(A.today())), cleanClaude: (reply, cands) => cleanClaude(reply, cands || []), resolveDate: (t, r) => { const d = resolveDate(t, r); return d ? iso(d) : ""; } });
 
-window.PERL_MODULES.push({ views: { connect: vConnect }, acts, on });
+window.PERL_MODULES.push({ views: { connect: vConnect }, acts, on, today: healthCard, todaySlot: "alert" });
 })();
