@@ -1280,7 +1280,7 @@ function vToday() {
   const pend = state.example ? [] : (state.rotations || []).filter(guessedPast);
   const pendCard = pend.length ? `<section class="cn-health" role="status" aria-labelledby="h-ct-alert"><div><h2 id="h-ct-alert">Confirm ${pend.length === 1 ? "a past clerkship" : `${pend.length} past clerkships`}</h2>
       <p>${esc(pend.map((r) => `${rotShort(r.name)} ${fmtShort(parseD(r.start))}–${fmtShort(parseD(r.end))}`).join(", "))} came from a standard track's dates, so ${pend.length === 1 ? "its" : "their"} evaluations, grades and grade-review deadlines aren't counted until you confirm or fix ${pend.length === 1 ? "it" : "them"}.</p></div>
-      <div class="cn-health-act"><a class="btn small" href="#schedule" data-act="go-track">Review</a></div></section>` : "";
+      <div class="cn-health-act"><button class="btn small" data-act="wiz-open">Build my year</button><a class="btn quiet small" href="#schedule" data-act="go-track">Review one by one</a></div></section>` : "";
   return `<div class="home">
     ${pendCard}${modToday("alert")}
     ${heroHtml()}
@@ -1684,7 +1684,92 @@ function rotPill(r) {
   if (e && e < t) return `<span class="pill warn">Grade pending</span>`;
   return `<span class="pill">Upcoming</span>`;
 }
-const SRC_TAG = { audit: "From your audit", base: "From your assigned track, confirm", you: "Added by you", track: "From your track" };
+const SRC_TAG = { audit: "From your audit", base: "From your assigned track, confirm", you: "Added by you", track: "From your track", est: "Estimated: with the next class, confirm when their schedule is out" };
+
+/* ----- Build my year: the track you move with, where you started, and only the blocks that were different -----
+   Off-cycle students mostly follow one track with a few blocks swapped, then finish the clerkships they missed with the
+   next class. So: pick the track, pick the block your year started, change the blocks that differ; everything not
+   placed lines up after the track ends (estimated dates, reorderable). Saving replaces the clerkships and block
+   electives on the plan; other rotations (sub-Is, aways) stay. */
+const WIZ_OFF = "off", WIZ_BEFORE = "before";
+function wizSeq(base) { const s = schedule(); return s && s.tracks[base] ? s.tracks[base] : []; }
+function wizInit(base) {
+  const s = schedule(); const pr = state.profile;
+  base = base || pr.trackBase || (pr.track && pr.track !== "custom" ? pr.track : "") || (s ? Object.keys(s.tracks)[0] : "");
+  const seq = wizSeq(base);
+  const rots = (state.rotations || []).filter((r) => !guessedPast(r) && (r.kind === "clerkship" || r.kind === "elective"));
+  const own = (r) => !["base", "track", "est"].includes(r.src);
+  const near = (x) => rots.find((r) => own(r) && Math.abs(diffDays(parseD(r.start), parseD(x.a))) <= 7);
+  /* where the year started: the first block the student's own plan has something in, else their recorded start */
+  const firstOwn = seq.find((x) => near(x));
+  const start = firstOwn ? firstOwn.a : (seq.find((x) => pr.ciStart && x.a >= pr.ciStart) || seq[0] || {}).a || "";
+  const picks = seq.map((x) => { const h = near(x); return h ? (h.kind === "elective" ? "Elective" : h.name) : x.n; });
+  return { base, start, picks, order: [] };
+}
+function wizLater(w) {
+  const seq = wizSeq(w.base); const placed = new Set();
+  seq.forEach((x, i) => { if (x.a >= w.start && CLERKSHIPS.includes(w.picks[i])) placed.add(w.picks[i]); });
+  /* first order: the order the plan already has them in (dates the student set), else the usual one */
+  const had = (n) => ((state.rotations || []).find((r) => r.kind === "clerkship" && r.name === n && !["base", "track"].includes(r.src)) || {}).start || "9999";
+  const need = CLERKSHIPS.filter((n) => !placed.has(n) && clerkState(n) !== "done").sort((a, b) => had(a).localeCompare(had(b)));
+  const order = w.order.filter((n) => need.includes(n)).concat(need.filter((n) => !w.order.includes(n)));
+  w.order = order;
+  /* back to back from the Monday after the track's last block, at each clerkship's usual length; editable after saving */
+  const last = seq.filter((x, i) => x.a >= w.start && w.picks[i] !== WIZ_OFF).map((x) => x.b).sort().pop() || isoD(today());
+  let st = addDays(parseD(last), 1); while (st.getDay() !== 1) st = addDays(st, 1);
+  return order.map((n) => {
+    const weeks = CLERK_WEEKS[n] || 5; const a = st; const b = addDays(a, weeks * 7 - 1); st = addDays(b, 1); while (st.getDay() !== 1) st = addDays(st, 1);
+    return { name: n, start: isoD(a), end: isoD(b) };
+  });
+}
+function wizErrors(w) {
+  const seq = wizSeq(w.base); const seen = {}; const out = [];
+  seq.forEach((x, i) => { const p = w.picks[i]; if (x.a < w.start || !CLERKSHIPS.includes(p)) return; if (seen[p]) out.push(`${rotShort(p)} is in two blocks. Pick it once.`); seen[p] = true; });
+  return out;
+}
+function wizPanel() {
+  const w = ui.wiz; const s = schedule(); if (!w || !s) return "";
+  const seq = wizSeq(w.base); const later = wizLater(w); const errs = wizErrors(w);
+  const opts = (cur) => [...CLERKSHIPS, "Elective"].map((n) => `<option value="${esc(n)}" ${cur === n ? "selected" : ""}>${esc(n === "Elective" ? "Elective" : rotShort(n))}</option>`).join("") + `<option value="${WIZ_OFF}" ${cur === WIZ_OFF ? "selected" : ""}>Off (leave, study or vacation)</option>`;
+  const rows = seq.map((x, i) => {
+    const before = x.a < w.start; const p = w.picks[i]; const changed = !before && p !== x.n;
+    return `<li class="wiz-row${before ? " wiz-before" : ""}${changed ? " wiz-changed" : ""}">
+      <div class="what"><span class="t num">${esc(fmtShort(parseD(x.a)))} – ${esc(fmtShort(parseD(x.b)))}</span><small>Block ${esc(x.blocks)} · Track ${esc(w.base)} has ${esc(x.n === "Elective" ? "an elective" : rotShort(x.n))}</small></div>
+      <div class="tail">${before ? `<span class="muted">Before your year started</span>` : `<label class="sr" for="wiz-p-${i}">What you did or will do, ${esc(fmtShort(parseD(x.a)))}</label><select id="wiz-p-${i}" data-act="wiz-pick" data-i="${i}">${opts(p)}</select>`}</div></li>`;
+  }).join("");
+  const lrows = later.map((l, i) => `<li class="wiz-row"><div class="what"><span class="t">${esc(l.name)}</span><small class="num">${esc(fmtShort(parseD(l.start)))} – ${esc(fmtShort(parseD(l.end)))} · estimated</small></div>
+      <div class="tail"><button class="btn quiet small" data-act="wiz-move" data-n="${esc(l.name)}" data-d="-1" ${i === 0 ? "disabled" : ""} aria-label="Move ${esc(l.name)} earlier">Earlier</button><button class="btn quiet small" data-act="wiz-move" data-n="${esc(l.name)}" data-d="1" ${i === later.length - 1 ? "disabled" : ""} aria-label="Move ${esc(l.name)} later">Later</button></div></li>`).join("");
+  return `<section class="panel wiz" id="wiz" aria-labelledby="h-wiz">
+    <div class="panel-head"><h2 id="h-wiz">Build my year</h2></div>
+    <p class="tk-lead">Pick the track you move with and the block your year started, then change only the blocks that were different. Clerkships you haven't placed line up after your track ends, with the next class.</p>
+    <div class="wiz-top">
+      <div class="field"><label for="wiz-base">Track you move with</label><select id="wiz-base">${Object.keys(s.tracks).map((k) => `<option value="${esc(k)}" ${w.base === k ? "selected" : ""}>Track ${esc(k)}</option>`).join("")}</select></div>
+      <div class="field"><label for="wiz-start">Your clerkship year started</label><select id="wiz-start">${seq.map((x) => `<option value="${esc(x.a)}" ${w.start === x.a ? "selected" : ""}>${esc(fmtShort(parseD(x.a)))} (block ${esc(x.blocks)})</option>`).join("")}</select></div>
+    </div>
+    <ol class="list wiz-list" aria-label="Your blocks on Track ${esc(w.base)}">${rows}</ol>
+    ${later.length ? `<div class="wiz-later"><h3>After your track: with the next class</h3><ol class="list wiz-list">${lrows}</ol><p class="hint">Estimated dates until the next class's schedule is out. Put them in the order you'll take them; change the dates anytime after saving.</p></div>` : `<p class="hint mt8">Every core clerkship is placed or done.</p>`}
+    ${errs.length ? `<p class="err" role="alert">${esc(errs.join(" "))}</p>` : ""}
+    <div class="wiz-act"><button class="btn primary" data-act="wiz-apply" ${errs.length ? "disabled" : ""}>Save my year</button><button class="btn quiet" data-act="wiz-cancel">Cancel</button></div>
+  </section>`;
+}
+function wizApply() {
+  const w = ui.wiz; const s = schedule(); if (!w || !s || wizErrors(w).length) return;
+  const seq = wizSeq(w.base); const out = [];
+  seq.forEach((x, i) => {
+    const p = w.picks[i]; if (x.a < w.start || p === WIZ_OFF) return;
+    if (p === "Elective") out.push({ id: `w-el-${x.a}`, name: `Elective (block ${x.blocks})`, kind: "elective", start: x.a, end: x.b, src: "you" });
+    else out.push({ id: `w-${REQ_FOR[p] || "c"}-${x.a}`, name: p, kind: "clerkship", start: x.a, end: x.b, src: "you" });
+  });
+  for (const l of wizLater(w)) out.push({ id: `w-${REQ_FOR[l.name] || "c"}-${l.start}`, name: l.name, kind: "clerkship", start: l.start, end: l.end, src: "est" });
+  const grades = Object.fromEntries((state.rotations || []).filter((r) => r.gradePosted).map((r) => [r.name + r.start, r.gradePosted]));
+  const keep = (state.rotations || []).filter((r) => r.kind !== "clerkship" && !/^Elective \(block/.test(r.name));
+  state.rotations = keep.concat(out.map((r) => (grades[r.name + r.start] ? { ...r, gradePosted: grades[r.name + r.start] } : r)));
+  const pr = state.profile; pr.track = "custom"; pr.trackBase = w.base; pr.trackSched = s.id;
+  const cl = out.filter((r) => r.kind === "clerkship").sort((a, b) => a.start.localeCompare(b.start));
+  if (cl.length) { pr.ciStart = [...out].sort((a, b) => a.start.localeCompare(b.start))[0].start; pr.ciEnd = cl[cl.length - 1].end; }
+  ui.wiz = null; becomeMine(); persist(); render(); refocus("#h-ct");
+  toast(`Your year is saved: ${plural(cl.length, "clerkship")} in order. Today, the Calendar and every deadline now follow it.`);
+}
 function customTrackPanel(opts) {
   opts = opts || {};
   const pr = state.profile; const all = (state.rotations || []).filter((r) => r.kind === "clerkship").sort((a, b) => String(a.start).localeCompare(String(b.start)));
@@ -1698,15 +1783,16 @@ function customTrackPanel(opts) {
       <div class="what"><span class="t">${esc(r.name)}</span><small>Track ${esc(pr.trackBase || "")} had this here. Not counted until you say so.</small></div>
       <div class="ct-dates"><label class="sr" for="cs-${esc(r.id)}">${esc(r.name)} starts</label><input type="date" id="cs-${esc(r.id)}" data-act="ct-date" data-id="${esc(r.id)}" data-k="start" value="${esc(r.start)}"><span aria-hidden="true">to</span><label class="sr" for="ce-${esc(r.id)}">${esc(r.name)} ends</label><input type="date" id="ce-${esc(r.id)}" data-act="ct-date" data-id="${esc(r.id)}" data-k="end" value="${esc(r.end)}"></div>
       <div class="tail"><button class="btn small" data-act="ct-confirm" data-id="${esc(r.id)}">Yes, these dates</button><button class="btn quiet small" data-act="del-rot" data-id="${esc(r.id)}" aria-label="${esc(r.name)} didn't happen then: remove it">Didn't happen</button></div></li>`;
-  const row = (r) => `<li class="ct-row${r.src === "base" ? " ct-confirm" : ""}">
+  const row = (r) => `<li class="ct-row${r.src === "base" || r.src === "est" ? " ct-confirm" : ""}">
       <div class="what"><span class="t">${esc(r.name)}</span><small>${esc(SRC_TAG[r.src] || SRC_TAG.you)}</small></div>
       <div class="ct-dates"><label class="sr" for="cs-${esc(r.id)}">${esc(r.name)} starts</label><input type="date" id="cs-${esc(r.id)}" data-act="ct-date" data-id="${esc(r.id)}" data-k="start" value="${esc(r.start)}"><span aria-hidden="true">to</span><label class="sr" for="ce-${esc(r.id)}">${esc(r.name)} ends</label><input type="date" id="ce-${esc(r.id)}" data-act="ct-date" data-id="${esc(r.id)}" data-k="end" value="${esc(r.end)}"></div>
-      <div class="tail">${rotPill(r)}${r.src === "base" ? `<button class="btn small" data-act="ct-confirm" data-id="${esc(r.id)}">Confirm</button>` : ""}<button class="btn quiet small" data-act="del-rot" data-id="${esc(r.id)}" aria-label="Remove ${esc(r.name)}">Remove</button></div></li>`;
+      <div class="tail">${rotPill(r)}${r.src === "base" || r.src === "est" ? `<button class="btn small" data-act="ct-confirm" data-id="${esc(r.id)}">Confirm</button>` : ""}<button class="btn quiet small" data-act="del-rot" data-id="${esc(r.id)}" aria-label="Remove ${esc(r.name)}">Remove</button></div></li>`;
   const bases = s ? Object.keys(s.tracks) : [];
   return `<section class="panel" aria-labelledby="h-ct" id="custom-track">
     <div class="panel-head"><h2 id="h-ct">${opts.title || "Your clerkship track"}</h2><span class="aside">${esc(trackLabel())}</span></div>
     <p class="tk-lead">${opts.lead || "Your own sequence. Change a date and Today, the Calendar, deadlines and your debriefs follow."}</p>
     ${all.length ? summary : ""}
+    ${!ui.wiz && !opts.noBase ? `<p class="hint">Off-cycle or swapped blocks? <button class="link" data-act="wiz-open">Build my year</button> from your track instead of editing dates one by one.</p>` : ""}
     ${pend.length ? `<div class="ct-pend" role="group" aria-labelledby="h-ct-pend"><h3 id="h-ct-pend">Did ${pend.length === 1 ? "this" : "these"} happen?</h3><p class="hint">${pend.length === 1 ? "This block is" : "These blocks are"} already over and came from a standard track's dates, not yours. ${pend.length === 1 ? "It creates" : "They create"} no deadlines and ${pend.length === 1 ? "doesn't" : "don't"} tag your debriefs until you confirm. Fix the dates if they were different.</p><ul class="list ct-list">${pend.map(prow).join("")}</ul></div>` : ""}
     ${rots.length ? `<ul class="list ct-list">${rots.map(row).join("")}</ul>` : `<div class="empty">No clerkships yet. Add the ones you know below.</div>`}
     ${miss.length ? `<div class="ct-miss"><span class="label">Still to schedule</span><div class="ct-chips">${miss.map((n) => { const sl = nextSlot(n); return `<button class="chip" data-act="ct-add" data-n="${esc(n)}" aria-label="Add ${esc(n)} starting ${esc(fmtShort(parseD(sl.start)))}">+ ${esc(TRACK_SHORT[n] || n)} <small class="num">${esc(fmtShort(parseD(sl.start)))}</small></button>`; }).join("")}</div><span class="hint">Adds it at the next open block; adjust the dates once you know them.</span></div>` : rots.length ? `<p class="hint mt8">Every core clerkship is on your plan or done.</p>` : ""}
@@ -2183,7 +2269,8 @@ function setupDone() { state.profile.setupDone = true; persist(); ui.setupStep =
 
 function vSchedule() {
   return `<div class="title-row"><div><h1>Schedule</h1><p class="finding">One schedule feeds Today, the Calendar, Rotations and your Debrief journal. Pick your track, then drop in each clerkship's weekly schedule as it comes.</p></div><div class="title-actions"><button class="btn small primary" data-act="open-audit">Import degree audit</button><a class="btn small" href="#rotations">Edit rotations</a></div></div>
-  ${state.profile.track === "custom" ? customTrackPanel() + `<details class="panel tk-std"><summary>Standard AY2026-27 tracks</summary>${trackPanel()}</details>` : trackPanel() + `<p class="hint">Off-cycle, or your dates differ from every track? <button class="link" data-act="make-custom">Make a custom track</button> and set your own dates.</p>`}
+  ${ui.wiz ? wizPanel() : ""}
+  ${state.profile.track === "custom" ? customTrackPanel() + `<details class="panel tk-std"><summary>Standard AY2026-27 tracks</summary>${trackPanel()}</details>` : trackPanel() + `<p class="hint">Off-cycle, swapped a block, or finishing with the next class? <button class="link" data-act="wiz-open">Build my year</button> from your track in a few clicks, or <button class="link" data-act="make-custom">make a custom track</button> and set every date yourself.</p>`}
   ${dropPanel()}`;
 }
 function vNone() { return ""; } /* Debrief views are drawn by the Debrief space into #dbf-views */
@@ -2399,6 +2486,10 @@ document.addEventListener("click", (ev) => {
     case "su-read": { const v = ($("#su-text") || {}).value || ""; if (!v.trim()) { ui.setupErr = "Paste your audit text first."; render(); break; } setupAuditText(v, "Pasted text"); break; }
     case "su-undo": ui.setupAudit = null; ui.setupErr = ""; render(); refocus("#su-file"); break;
     case "make-custom": makeCustom(); break;
+    case "wiz-open": ev.preventDefault && ev.preventDefault(); ui.wiz = wizInit(); if (ui.view !== "schedule") go("schedule"); else render(); setTimeout(() => focusSection("wiz"), 60); break;
+    case "wiz-cancel": ui.wiz = null; render(); refocus("#h-ct, #track"); break;
+    case "wiz-apply": wizApply(); break;
+    case "wiz-move": { const w = ui.wiz; if (!w) break; wizLater(w); const i = w.order.indexOf(t.dataset.n); const j = i + Number(t.dataset.d); if (i < 0 || j < 0 || j >= w.order.length) break; [w.order[i], w.order[j]] = [w.order[j], w.order[i]]; render(); refocus(`[data-act=wiz-move][data-n="${CSS.escape(t.dataset.n)}"][data-d="${t.dataset.d}"]:not([disabled]), #h-wiz`); break; }
     case "ct-add": { const n = t.dataset.n; const sl = nextSlot(n); const rot = { id: "c" + Date.now().toString(36), name: n, kind: "clerkship", start: sl.start, end: sl.end, src: "you" };
       if (state.profile.track !== "custom") makeCustom(); state.rotations = state.rotations.filter((r) => !(r.src === "base" && r.name === n)); state.rotations.push(rot); becomeMine(); persist(); render(); refocus(`#cs-${CSS.escape(rot.id)}`); toast(`${rotShort(n)} added ${fmtShort(parseD(sl.start))} to ${fmtShort(parseD(sl.end))}. Adjust the dates if they're different.`); break; }
     case "ct-confirm": { const r = (state.rotations || []).find((x) => x.id === t.dataset.id); if (r) { r.src = "you"; persist(); render(); refocus("#h-ct"); toast(`${rotShort(r.name)} dates confirmed.`); } break; }
@@ -2445,7 +2536,7 @@ document.addEventListener("change", (ev) => {
     if (k === "end" && other && t.value < other) { toast("The end date is before the start date."); t.value = r[k]; return; }
     /* a later start moves the whole block: the end keeps the block's length, so a rotation can be moved with one field */
     if (k === "start" && other && t.value > other) { const len = Math.max(0, diffDays(parseD(r.start), parseD(r.end))); r.end = isoD(addDays(parseD(t.value), len)); }
-    r[k] = t.value; if (r.src === "base") r.src = "you"; if (state.profile.track !== "custom") makeCustom(); becomeMine(); persist(); toast(`${rotShort(r.name)}: ${fmtShort(parseD(r.start))} to ${fmtShort(parseD(r.end))}.`);
+    r[k] = t.value; if (r.src === "base" || r.src === "est") r.src = "you"; if (state.profile.track !== "custom") makeCustom(); becomeMine(); persist(); toast(`${rotShort(r.name)}: ${fmtShort(parseD(r.start))} to ${fmtShort(parseD(r.end))}.`);
     if (wasPending || k === "start") { render(); refocus(`#${CSS.escape(t.id)}`); }
     return;
   }
@@ -2454,6 +2545,9 @@ document.addEventListener("change", (ev) => {
     const plan = customPlan(auditRots, base).filter((x) => !mineRots.some((m) => m.name === x.name)).map((x) => (x.src === "audit" ? { ...x, id: (state.rotations.find((r) => r.src === "audit" && r.name === x.name && r.start === x.start) || x).id } : x));
     setCustomRotations(plan.concat(mineRots), base); becomeMine(); persist(); render(); refocus("#ct-base"); toast(base ? `Started from Track ${base}. Confirm the dates marked to confirm.` : "Assigned track cleared."); return; }
   if (t.id === "su-file" && t.files && t.files[0]) { setupAuditFile(t.files[0]); return; }
+  if (ui.wiz && t.id === "wiz-base") { ui.wiz = wizInit(t.value); render(); refocus("#wiz-base"); return; }
+  if (ui.wiz && t.id === "wiz-start") { ui.wiz.start = t.value; render(); refocus("#wiz-start"); return; }
+  if (ui.wiz && t.matches("[data-act='wiz-pick']")) { ui.wiz.picks[Number(t.dataset.i)] = t.value; render(); refocus(`#${CSS.escape(t.id)}`); return; }
   if (t.id === "p-track") { if (t.value === "custom") return; if (t.value) applyTrack(t.value); else { state.profile.track = ""; persist(); render(); } return; }
   if (t.id === "sched-file" && t.files && t.files[0]) { const f0 = t.files[0]; const ta = $("#sched-text"); if (ta) ui.sched.text = ta.value; f0.text().then((txt) => { ui.sched.text = txt.slice(0, 200000); ui.sched.fileName = f0.name; ui.sched.items = null; ui.sched.error = ""; render(); }).catch(() => { ui.sched.error = "Couldn't read that file."; render(); }); return; }
   if (t.id === "audit-file" && t.files && t.files[0]) { const ta = $("#audit-text"); if (ta) ui.audit.text = ta.value; readAuditFile(t.files[0]); }

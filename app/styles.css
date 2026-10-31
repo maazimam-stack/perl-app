@@ -1008,6 +1008,17 @@ code:where(:not(.dbf, .dbf *)),.mono:where(:not(.dbf, .dbf *)){font-family: var(
 .ct-sum b:where(:not(.dbf, .dbf *)){font-weight: 600; margin-right: 4px; color: var(--muted);}
 .ct-pend:where(:not(.dbf, .dbf *)){margin: 0 0 16px; padding: 12px; border-radius: 10px; border: 1px solid var(--amber); }
 .ct-pend h3:where(:not(.dbf, .dbf *)){margin: 0 0 4px; font-size: 15px;}
+.wiz-top:where(:not(.dbf, .dbf *)){display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 4px 0 12px;}
+.wiz-top .field:where(:not(.dbf, .dbf *)){min-width: 200px;}
+.wiz-list > li.wiz-row:where(:not(.dbf, .dbf *)){display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 16px;}
+.wiz-row .what small:where(:not(.dbf, .dbf *)){display: block; color: var(--muted);}
+.wiz-row.wiz-before:where(:not(.dbf, .dbf *)){opacity: .55;}
+.wiz-row.wiz-changed:where(:not(.dbf, .dbf *)){box-shadow: inset 3px 0 0 var(--accent);}
+.wiz-row .tail:where(:not(.dbf, .dbf *)){display: flex; gap: 6px; align-items: center;}
+.wiz-later:where(:not(.dbf, .dbf *)){margin-top: 16px;}
+.wiz-later h3:where(:not(.dbf, .dbf *)){margin: 0 0 6px; font-size: 15px;}
+.wiz-act:where(:not(.dbf, .dbf *)){display: flex; gap: 8px; margin-top: 16px;}
+@media (max-width: 560px){ .wiz-list > li.wiz-row:where(:not(.dbf, .dbf *)){grid-template-columns: minmax(0, 1fr);} }
 .ct-pend .hint:where(:not(.dbf, .dbf *)){margin: 0 0 8px;}
 .ct-chips:where(:not(.dbf, .dbf *)){display: flex; flex-wrap: wrap; gap: 8px;}
 .ct-chips .chip:where(:not(.dbf, .dbf *)){color: var(--text);}
