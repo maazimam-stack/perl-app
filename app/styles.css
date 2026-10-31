@@ -1010,7 +1010,9 @@ code:where(:not(.dbf, .dbf *)),.mono:where(:not(.dbf, .dbf *)){font-family: var(
 .ct-pend h3:where(:not(.dbf, .dbf *)){margin: 0 0 4px; font-size: 15px;}
 .wiz-top:where(:not(.dbf, .dbf *)){display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 4px 0 12px;}
 .wiz-top .field:where(:not(.dbf, .dbf *)){min-width: 200px;}
-.wiz-list > li.wiz-row:where(:not(.dbf, .dbf *)){display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 16px;}
+.wiz .wiz-list > li.wiz-row:where(:not(.dbf, .dbf *)){display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;}
+.wiz .wiz-list > li.wiz-row > .what:where(:not(.dbf, .dbf *)){flex: 1 1 220px; min-width: 0;}
+.wiz .wiz-list > li.wiz-row > .tail:where(:not(.dbf, .dbf *)){flex: 0 1 auto; flex-wrap: wrap;}
 .wiz-row .what small:where(:not(.dbf, .dbf *)){display: block; color: var(--muted);}
 .wiz-row.wiz-before:where(:not(.dbf, .dbf *)){opacity: .55;}
 .wiz-row.wiz-changed:where(:not(.dbf, .dbf *)){box-shadow: inset 3px 0 0 var(--accent);}
@@ -1018,7 +1020,6 @@ code:where(:not(.dbf, .dbf *)),.mono:where(:not(.dbf, .dbf *)){font-family: var(
 .wiz-later:where(:not(.dbf, .dbf *)){margin-top: 16px;}
 .wiz-later h3:where(:not(.dbf, .dbf *)){margin: 0 0 6px; font-size: 15px;}
 .wiz-act:where(:not(.dbf, .dbf *)){display: flex; gap: 8px; margin-top: 16px;}
-@media (max-width: 560px){ .wiz-list > li.wiz-row:where(:not(.dbf, .dbf *)){grid-template-columns: minmax(0, 1fr);} }
 .ct-pend .hint:where(:not(.dbf, .dbf *)){margin: 0 0 8px;}
 .ct-chips:where(:not(.dbf, .dbf *)){display: flex; flex-wrap: wrap; gap: 8px;}
 .ct-chips .chip:where(:not(.dbf, .dbf *)){color: var(--text);}
