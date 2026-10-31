@@ -68,7 +68,7 @@ const createdOf = (h) => A.parseD(h.created) || T();
 const colorVar = (h) => `var(--hb-c${(Number(h.color) || 0) % PALETTE})`;
 const save = () => A.persist();
 /* focus is restored synchronously, so a quick next key press (wheel arrows) is never overtaken by a late refocus */
-function rerender(focusSel) { A.render(); if (!focusSel) return; const el = document.querySelector(focusSel); if (el && document.activeElement !== el) el.focus({ preventScroll: true }); }
+function rerender(focusSel) { A.render(); if (!focusSel) return; const el = document.querySelector(focusSel); if (!el || document.activeElement === el) return; if (el.tabIndex < 0 && !el.hasAttribute("tabindex") && !el.disabled) el.setAttribute("tabindex", "-1"); el.focus({ preventScroll: true }); }
 function uid() { return "h" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
 function nextColor() { const used = new Set(items().map((h) => Number(h.color))); for (let i = 0; i < PALETTE; i++) if (!used.has(i)) return i; return items().length % PALETTE; }
 
@@ -134,8 +134,11 @@ function toggle(dIso, id, ver) {
 async function ankiCall(action, params) {
   const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 3000);
   try {
-    /* text/plain body keeps this a simple CORS request (no preflight); AnkiConnect parses JSON regardless */
-    const r = await fetch(ANKI_URL, { method: "POST", body: JSON.stringify(params ? { action, version: 6, params } : { action, version: 6 }), signal: ctl.signal });
+    /* text/plain body keeps this a simple CORS request (no preflight); AnkiConnect parses JSON regardless.
+       targetAddressSpace tells Chrome (142+, Local Network Access) this is a deliberate loopback call from an https page;
+       other browsers ignore the key. Safari still treats http://127.0.0.1 from an https page as mixed content and blocks
+       it, so there this fails fast and the "Anki isn't reachable" message shows. */
+    const r = await fetch(ANKI_URL, { method: "POST", body: JSON.stringify(params ? { action, version: 6, params } : { action, version: 6 }), signal: ctl.signal, targetAddressSpace: "loopback" });
     const j = await r.json();
     if (j && j.error) throw new Error(String(j.error));
     return j ? j.result : null;
@@ -432,7 +435,7 @@ const acts = {
     const n = Number(el.dataset.n); const u = U(); const t = T();
     if (!n) u.month = ""; else { const m = monthOf(); const x = new Date(m.getFullYear(), m.getMonth() + n, 1); u.month = x > t ? "" : iso(x).slice(0, 7); }
     u.focus = null; rerender(`#${el.disabled ? "hb-mprev" : el.id}`);
-    setTimeout(() => { if (document.activeElement && document.activeElement.disabled) document.getElementById("hb-mprev")?.focus(); }, 10);
+    setTimeout(() => { const a = document.activeElement; if (!a || a === document.body || a.disabled) document.getElementById("hb-mprev")?.focus(); }, 10); /* "This month" and "Next" disable themselves on the current month */
   },
   "hab-pick": (el) => { const u = U(); u.pick[el.dataset.k] = !u.pick[el.dataset.k]; rerender(`#hb-s-${el.dataset.k}`); },
   "hab-start": () => {

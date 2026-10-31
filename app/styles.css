@@ -76,8 +76,8 @@ kbd:where(:not(.dbf, .dbf *)){font: 500 11px/18px var(--font); padding: 0 6px; b
 .theme-btn > span:not(.theme-sw):where(:not(.dbf, .dbf *)){flex: 1;}
 .theme-sw:where(:not(.dbf, .dbf *)){position: relative; width: 30px; height: 18px; border-radius: 999px; background: var(--control); flex: none; transition: background 200ms var(--ease);}
 .theme-sw i:where(:not(.dbf, .dbf *)){position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--ground); transition: transform 200ms var(--ease);}
-:root[data-theme="dark"] .theme-sw,.theme-btn[aria-label="Switch to light mode"] .theme-sw:where(:not(.dbf, .dbf *)){background: var(--teal);}
-.theme-btn[aria-label="Switch to light mode"] .theme-sw i:where(:not(.dbf, .dbf *)){transform: translateX(12px); background: var(--on-teal);}
+:root[data-theme="dark"] .theme-sw,.theme-btn[aria-checked="true"] .theme-sw:where(:not(.dbf, .dbf *)){background: var(--teal);}
+.theme-btn[aria-checked="true"] .theme-sw i:where(:not(.dbf, .dbf *)){transform: translateX(12px); background: var(--on-teal);}
 @media (prefers-reduced-motion: reduce){
 .theme-sw:where(:not(.dbf, .dbf *)),.theme-sw i:where(:not(.dbf, .dbf *)){transition: none;}
 }
@@ -225,6 +225,10 @@ input:where(:not(.dbf, .dbf *))::placeholder,textarea:where(:not(.dbf, .dbf *)):
 .stack:where(:not(.dbf, .dbf *)){display: grid; gap: 12px;}
 .notice:where(:not(.dbf, .dbf *)){display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 10px 10px 18px; border-radius: var(--r-card); background: transparent; border: 1px solid var(--border); color: var(--text-2); font-size: 13px; line-height: 18px;}
 .notice .btn:where(:not(.dbf, .dbf *)){background: var(--raised); border-color: var(--border);}
+.notice.warn:where(:not(.dbf, .dbf *)){border-color: var(--amber); color: var(--text);}
+.notice + .notice:where(:not(.dbf, .dbf *)){margin-top: 8px;}
+.notice-acts:where(:not(.dbf, .dbf *)){display: flex; gap: 8px; flex-wrap: wrap;}
+#view[data-view="journal"] > .notice, #view[data-view="history"] > .notice, #view[data-view="vault"] > .notice, #view[data-view="mspe"] > .notice, #view[data-view="dsettings"] > .notice{margin-bottom: 0;}
 .empty:where(:not(.dbf, .dbf *)){padding: 14px 16px; border-radius: var(--r-row); border: 1px dashed var(--control); color: var(--muted); font-size: 13px; line-height: 19px;}
 .saved:where(:not(.dbf, .dbf *)){color: var(--muted); font-size: 12px;}
 .key:where(:not(.dbf, .dbf *)){display: inline-flex; gap: 6px 14px; flex-wrap: wrap; color: var(--muted); font-size: 12px; line-height: 16px;}
@@ -343,7 +347,7 @@ tr.sec td:where(:not(.dbf, .dbf *)){border-top: 0; padding-top: 18px; padding-bo
 .sw.k-subi:where(:not(.dbf, .dbf *)){background: transparent; border: 1.5px solid var(--k-bar);}
 .mc-band:hover:where(:not(.dbf, .dbf *)){filter: brightness(.97);}
 .mc-items:where(:not(.dbf, .dbf *)){grid-row: -2 / -1; z-index: 1; pointer-events: none; display: grid; gap: 3px; align-content: start; min-width: 0; padding: 4px 8px 8px;}
-.mc-items.out:where(:not(.dbf, .dbf *)){opacity: .55;}
+.mc-items.out:where(:not(.dbf, .dbf *)){opacity: .7;}
 .mc-chip:where(:not(.dbf, .dbf *)){display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; line-height: 17px;}
 .mc-chip .t:where(:not(.dbf, .dbf *)){white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
 .mc-chip.done .t:where(:not(.dbf, .dbf *)){color: var(--muted); text-decoration: line-through;}
@@ -404,15 +408,18 @@ button.hc-day:hover:where(:not(.dbf, .dbf *)){transform: scale(1.12); z-index: 1
   opacity: 0;
   filter: blur(var(--panel-blur));
   pointer-events: none;
+  visibility: hidden;
   transition:
     transform var(--panel-close-dur) var(--panel-ease),
     opacity   var(--panel-close-dur) var(--panel-ease),
-    filter    var(--panel-close-dur) var(--panel-ease);
+    filter    var(--panel-close-dur) var(--panel-ease),
+    visibility 0s linear var(--panel-close-dur);
   will-change: transform, opacity, filter;}
 .t-panel-slide[data-open="true"]:where(:not(.dbf, .dbf *)){transform: translateY(0);
   opacity: 1;
   filter: blur(0);
   pointer-events: auto;
+  visibility: visible;
   transition:
     transform var(--panel-open-dur) var(--panel-ease),
     opacity   var(--panel-open-dur) var(--panel-ease),
@@ -512,8 +519,8 @@ button.hc-day:hover:where(:not(.dbf, .dbf *)){transform: scale(1.12); z-index: 1
 .j-today > span:where(:not(.dbf, .dbf *)){position: absolute; top: 14px; left: 0; transform: translateX(-50%); color: var(--teal-text); font-size: 12px; font-weight: 600; white-space: nowrap;}
 .j-cols:where(:not(.dbf, .dbf *)){display: grid; gap: 0 16px; align-items: start;}
 .j-col:where(:not(.dbf, .dbf *)){min-width: 0; padding-top: 16px; border-top: 1px solid var(--rule);}
-.j-col h3:where(:not(.dbf, .dbf *)){display: flex; justify-content: space-between; gap: 8px; margin: 0 0 10px; font-size: 13px; line-height: 18px; font-weight: 600;}
-.j-col h3 span:where(:not(.dbf, .dbf *)){color: var(--muted); font-weight: 400;}
+.j-col h2:where(:not(.dbf, .dbf *)){display: flex; justify-content: space-between; gap: 8px; margin: 0 0 10px; font-size: 13px; line-height: 18px; font-weight: 600;}
+.j-col h2 span:where(:not(.dbf, .dbf *)){color: var(--muted); font-weight: 400;}
 .j-col.room p:where(:not(.dbf, .dbf *)){margin: 0 0 8px; color: var(--text-2); font-size: 13px; line-height: 19px;}
 .j-col.room p.muted:where(:not(.dbf, .dbf *)){color: var(--muted); font-size: 12px; line-height: 17px;}
 .j-tiles:where(:not(.dbf, .dbf *)){display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px;}
@@ -607,7 +614,7 @@ table.pt td.you .pt-cell:where(:not(.dbf, .dbf *)){box-shadow: none;}
 .plist:where(:not(.dbf, .dbf *)){display: grid; gap: 6px;}
 .prow:where(:not(.dbf, .dbf *)){display: grid; grid-template-columns: 70px minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 56px; padding: 9px 12px; border-radius: var(--r-row); cursor: pointer; border: 1px solid var(--border); text-align: left; background: var(--raised); width: 100%; transition: border-color 150ms var(--ease);}
 .prow:hover:where(:not(.dbf, .dbf *)){border-color: var(--control);}
-.prow[aria-selected="true"]:where(:not(.dbf, .dbf *)){border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--raised));}
+.prow[aria-current="true"]:where(:not(.dbf, .dbf *)){border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--raised));}
 .prow .pc:where(:not(.dbf, .dbf *)){font-size: 12px; font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums;}
 .prow .pt:where(:not(.dbf, .dbf *)){min-width: 0; line-height: 19px;}
 .prow .pt small:where(:not(.dbf, .dbf *)){display: block; color: var(--muted); font-size: 12px; margin-top: 1px; line-height: 16px;}
@@ -757,6 +764,9 @@ html.dropping body::after{content: "Drop your schedule to read it"; position: fi
 .toast:where(:not(.dbf, .dbf *)){display: inline-flex; align-items: center; gap: 10px; max-width: 460px; padding: 10px 18px 10px 14px; border-radius: 999px; background: var(--raised); border: 1px solid var(--border); color: var(--text); font-size: 14px; line-height: 20px; box-shadow: var(--shadow-float);}
 .toast:where(:not(.dbf, .dbf *))::before{content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--teal); flex: none;}
 .toast:empty:where(:not(.dbf, .dbf *)){display: none;}
+.toast-act:where(:not(.dbf, .dbf *)){pointer-events: auto; margin-left: 4px; min-height: 28px; padding: 2px 8px; border: 0; border-radius: 999px; background: none; color: var(--teal-text); font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer;}
+.toast-act:where(:not(.dbf, .dbf *)):focus-visible{outline: 2px solid var(--focus, var(--teal)); outline-offset: 2px;}
+.toast.is-open:where(:not(.dbf, .dbf *)){pointer-events: auto;}
 @media (max-width: 1180px){
 .r-main > .s8:where(:not(.dbf, .dbf *)),.r-main > .s4:where(:not(.dbf, .dbf *)){grid-column: 1 / -1;}
 .r-main > .col:where(:not(.dbf, .dbf *)){display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));}
@@ -959,10 +969,10 @@ code:where(:not(.dbf, .dbf *)),.mono:where(:not(.dbf, .dbf *)){font-family: var(
   }
 }
 /* the switch shows the student's choice, not the host's theme */
-.theme-btn[aria-label="Switch to dark mode"] .theme-sw { background: var(--control); }
-.theme-btn[aria-label="Switch to dark mode"] .theme-sw i { transform: none; background: var(--ground); }
-:root[data-mode="light"] .side-new kbd, :root[data-mode="system"][data-theme="light"] .side-new kbd { background: rgba(255, 255, 255, .2); }
-@media (prefers-color-scheme: light) { :root[data-mode="system"]:not([data-theme="dark"]) .side-new kbd { background: rgba(255, 255, 255, .2); } }
+.theme-btn[aria-checked="false"] .theme-sw { background: var(--control); }
+.theme-btn[aria-checked="false"] .theme-sw i { transform: none; background: var(--ground); }
+:root[data-mode="light"] .side-new kbd, :root[data-mode="system"][data-theme="light"] .side-new kbd { background: rgba(0, 0, 0, .28); }
+@media (prefers-color-scheme: light) { :root[data-mode="system"]:not([data-theme="dark"]) .side-new kbd { background: rgba(0, 0, 0, .28); } }
 /* switching appearance eases colours for a moment; skipped when motion is reduced */
 .theme-switching, .theme-switching *, .theme-switching *::before, .theme-switching *::after { transition: background-color 220ms var(--ease), border-color 220ms var(--ease), color 220ms var(--ease), fill 220ms var(--ease) !important; }
 @media (prefers-reduced-motion: reduce) { .theme-switching, .theme-switching * { transition: none !important; } }
@@ -1132,10 +1142,25 @@ code:where(:not(.dbf, .dbf *)),.mono:where(:not(.dbf, .dbf *)){font-family: var(
 }
 
 
-/* Today already has a big Start debrief button, so the floating one would only cover content there */
-:root:has(#view[data-view="today"]) .dbf .fab{display:none!important}
+/* The floating New debrief button belongs to the Debrief pages. Today has its own big Start debrief button, and on
+   Habits, Career or Rotations a lone "+" reads as "add one of these", so it stays away; the menu has New debrief everywhere. */
+:root:not([data-space="debrief"]) .dbf .fab{display:none!important}
 /* keyboard hints mean nothing on a phone */
-@media (hover: none) and (pointer: coarse){ .dbf .hero-lbl > span{display:none} }
+@media (hover: none) and (pointer: coarse){ .dbf .hero-lbl .kbd-hint{display:none} }
+
+/* Whatever is typed or pasted (a 2,000-character string, a URL, a name in another script) wraps inside its box instead of
+   pushing the page sideways. break-word doesn't change how wide things want to be, so layouts don't shift. */
+:where(.canvas, .drawer, .sheet, .pal):where(:not(.dbf, .dbf *)){overflow-wrap: break-word;}
+.fact > *:where(:not(.dbf, .dbf *)){min-width: 0;}
+.fact .what:where(:not(.dbf, .dbf *)){display: block;}
+
+/* phones: a policy's title gets the row; its status ("Review overdue", "Effective Jun 2026") sits under it */
+@media (max-width: 560px){
+  .prow:where(:not(.dbf, .dbf *)){grid-template-columns: 52px minmax(0, 1fr); row-gap: 4px;}
+  .prow .pr:where(:not(.dbf, .dbf *)){grid-column: 2; justify-content: flex-start; text-align: left; flex-wrap: wrap; white-space: normal;}
+}
+.install-how:where(:not(.dbf, .dbf *)){display: block; margin-top: 2px;}
+.facts .fact .t:where(:not(.dbf, .dbf *)){display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;}
 
 /* Habits: the wheel, the heat map and the Today card. Every colour is a token, redefined for light mode.
    Habit colours --hb-c0…c6 keep ≥3:1 against --surface and --raised in both modes (dark ≥5.8:1, light ≥3.9:1). */
@@ -1598,6 +1623,95 @@ code:where(:not(.dbf, .dbf *)),.mono:where(:not(.dbf, .dbf *)){font-family: var(
   .mt-tag{transition: none;}
 }
 
+/* Connect (connect.js): the Connections page. Built only from the shared tokens in styles.css, so dark and light both
+   follow the student's choice. Prefix cn-. Thin rules, one status line per source, no badges. */
+.cn{display: grid; gap: var(--gap); min-width: 0;}
+.cn-cards{display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); align-items: start;}
+.cn-card{display: grid; gap: 12px; align-content: start; min-width: 0;}
+.cn-card .panel-head{margin-bottom: 0;}
+.cn-card .panel-head h2{margin: 0;}
+.cn-h{display: inline-flex; align-items: center; gap: 8px; min-width: 0;}
+.cn-h svg{width: 16px; height: 16px; flex: none; fill: none; stroke: var(--text-2); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;}
+.cn-card > .hint{margin: 0; max-width: 60ch;}
+.cn-card p{margin: 0;}
+
+/* status: one line, colour only where it means something */
+.cn-status{margin: 0; color: var(--text-2); font-size: 13px; line-height: 19px; overflow-wrap: anywhere;}
+.cn-status.is-off{color: var(--muted);}
+.cn-status.is-attn{color: var(--warning);}
+.cn-status.is-busy{color: var(--text-2);}
+@media (prefers-reduced-motion: no-preference){
+  .cn-status.is-busy::before{content: ""; display: inline-block; width: 7px; height: 7px; margin: 0 7px 1px 0; border-radius: 50%; background: var(--accent); animation: cn-pulse 1.2s var(--ease) infinite;}
+  @keyframes cn-pulse{50%{opacity: .3;}}
+}
+.cn-acts{display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;}
+.cn-acts > .hint{flex: 1 1 200px; min-width: 0;}
+.cn-confirm{color: var(--text-2); font-size: 13px; line-height: 18px; flex: 1 1 100%; max-width: 48ch;}
+.cn-or{display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; line-height: 16px; margin-top: 4px;}
+.cn-or::before,.cn-or::after{content: ""; flex: 1; height: 1px; background: var(--rule);}
+.cn-or span{flex: none; max-width: 100%; text-align: center;}
+
+/* linked feeds: a thin rule per row, no boxes */
+.cn-feeds{list-style: none; margin: 0; padding: 0; display: grid;}
+.cn-feeds > li{display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 10px 0; border-top: 1px solid var(--rule); min-width: 0;}
+.cn-feeds > li:last-child{border-bottom: 1px solid var(--rule);}
+.cn-feed-main{min-width: 0; flex: 1 1 220px; display: grid; gap: 2px;}
+.cn-feed-name{font-weight: 500; line-height: 19px; overflow-wrap: anywhere;}
+.cn-feed-acts{display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-left: -6px;}
+
+/* add a link */
+.cn-add{display: grid; gap: 6px; min-width: 0;}
+.cn-add-l{font-weight: 500; font-size: 13px; line-height: 18px;}
+.cn-add-row{display: flex; gap: 8px; min-width: 0;}
+.cn-add-row input{flex: 1 1 auto; min-width: 0; width: auto; height: var(--ctl); padding: 0 14px; border: 1px solid var(--control); border-radius: var(--r-row); background: var(--ground); font-size: 13px;}
+.cn-add-row input::placeholder{color: var(--muted);}
+.cn-add-row .btn{flex: none; height: var(--ctl);}
+.cn-err{margin: 0; color: var(--warning); font-size: 13px; line-height: 18px;}
+.cn-note{margin: 0; color: var(--text-2); font-size: 13px; line-height: 18px;}
+
+/* suggested deadlines */
+.cn-domains{max-width: 420px;}
+.cn-domains input{height: var(--ctl); padding: 0 14px; border: 1px solid var(--control); border-radius: var(--r-row); background: var(--ground); width: 100%; min-width: 0; font-size: 13px;}
+.cn-sugg{list-style: none; margin: 0; padding: 0; display: grid;}
+.cn-sugg > li{display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 10px 0; border-top: 1px solid var(--rule); min-width: 0;}
+.cn-sugg > li:last-child{border-bottom: 1px solid var(--rule);}
+.cn-sugg-main{display: flex; gap: 12px; align-items: baseline; min-width: 0; flex: 1 1 240px;}
+.cn-sugg-when{flex: none; width: 54px; font-weight: 500; font-size: 13px; color: var(--text);}
+.cn-sugg-t{min-width: 0; display: grid; gap: 2px;}
+.cn-sugg-t b{font-weight: 500; line-height: 19px; overflow-wrap: anywhere;}
+.cn-sugg-t small{color: var(--muted); font-size: 12px; line-height: 16px; overflow-wrap: anywhere;}
+.cn-sugg-t small a{color: var(--text-2); text-underline-offset: 3px; text-decoration-color: var(--control);}
+.cn-sugg-t small a:hover{color: var(--text); text-decoration-color: var(--text);}
+.cn-sugg-acts{display: flex; gap: 4px; align-items: center; flex: none;}
+
+/* already connected elsewhere */
+.cn-else{list-style: none; margin: 0; padding: 0; display: grid;}
+.cn-else > li{border-top: 1px solid var(--rule);}
+.cn-else > li:last-child{border-bottom: 1px solid var(--rule);}
+.cn-else a{display: grid; gap: 2px; padding: 10px 0; text-decoration: none; color: inherit;}
+.cn-else a b{font-weight: 500; line-height: 19px;}
+.cn-else a small{color: var(--muted); font-size: 12px; line-height: 16px;}
+.cn-else a:hover b{text-decoration: underline; text-decoration-color: var(--control); text-underline-offset: 3px;}
+
+/* foot and the artifact note */
+.cn-foot{margin: 0; display: grid; gap: 6px; color: var(--text-2); font-size: 13px; line-height: 18px;}
+.cn-check{display: inline-flex; align-items: flex-start; gap: 8px; cursor: pointer;}
+.cn-check input{margin: 2px 0 0; flex: none;}
+.cn-needs-app{display: grid; gap: 8px;}
+.cn-needs-app h2{margin: 0; font-size: 16px; line-height: 22px; font-weight: 600;}
+.cn-needs-app p{margin: 0; max-width: 64ch; color: var(--text-2);}
+
+@media (max-width: 900px){
+  .cn-cards{grid-template-columns: minmax(0, 1fr);}
+}
+@media (max-width: 640px){
+  .cn-add-row{flex-wrap: wrap;}
+  .cn-add-row input{flex-basis: 100%;}
+  .cn-sugg-main{flex-basis: 100%;}
+  .cn-feed-main{flex-basis: 100%;}
+}
+
+/* SOURCE OF TRUTH. Originally generated once by tools/port_debrief.py from handoff/perl/, then edited by hand; edit this file directly. The port script is retired and refuses to run, so nothing regenerates or overwrites it. */
 /* Debrief space: Perl's components on the merged dark palette. Gold is retired: progress and completion take the Debrief accent.
    Coral becomes the shared attention amber; red stays for what's wrong. Rotation tints are low-chroma so nothing shouts. */
 .dbf{
@@ -1686,7 +1800,7 @@ body.locked{overflow:hidden}
 .dbf .drop-card b{font:500 22px var(--display);letter-spacing:-.015em}
 .dbf .drop-card span{color:var(--ink-3);font-size:13px}
 .dbf .drop-card svg{width:28px;height:28px;color:var(--accent)}
-.dbf @container (max-width:620px){.cal-d .si{display:none}}
+@container (max-width:620px){.dbf .cal-d .si{display:none}}
 .dbf .status i{width:7px;height:7px;border-radius:50%;background:var(--ink-3);flex:none}
 .dbf .status.local i{background:var(--coral)}
 .dbf .main{min-width:0;container-type:inline-size}
@@ -1704,7 +1818,7 @@ body.locked{overflow:hidden}
 .dbf .s8{grid-column:span 8}
 .dbf .s12{grid-column:span 12}
 .dbf .tall{grid-row:span 2}
-.dbf @container (max-width:880px){.s4,.s5,.s6,.s7,.s8{grid-column:span 12}.tall{grid-row:auto}}
+@container (max-width:880px){.dbf .s4,.dbf .s5,.dbf .s6,.dbf .s7,.dbf .s8{grid-column:span 12}.dbf .tall{grid-row:auto}}
 .dbf .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;min-width:0}
 .dbf .card-h{display:flex;align-items:center;gap:8px;padding:20px 24px 0;min-height:40px}
 .dbf .card-h h2{font:500 13px var(--ui);margin:0;color:var(--ink-2)}
@@ -1744,7 +1858,8 @@ body.locked{overflow:hidden}
 .dbf .seg button:hover{color:var(--ink)}
 .dbf .seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--sh-1)}
 .dbf .input,.dbf .ta,.dbf .sel{width:100%;font:400 14.5px/1.5 var(--ui);color:var(--ink);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:8px 11px;min-width:0}
-.dbf .input:focus,.dbf .ta:focus,.dbf .sel:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.dbf .input:focus,.dbf .ta:focus,.dbf select.sel:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.dbf .input::placeholder,.dbf .ta::placeholder{color:var(--ink-3)}
 .dbf .ta{min-height:140px;resize:vertical}
 .dbf .lbl{font:500 10.5px var(--mono);text-transform:none;color:var(--ink-3)}
 .dbf .empty{padding:20px;border:1px dashed var(--border-2);border-radius:12px;color:var(--ink-2);display:grid;gap:12px;justify-items:start}
@@ -1784,7 +1899,7 @@ body.locked{overflow:hidden}
 .dbf .act .sub{display:block;font-size:12.5px;color:var(--ink-3)}
 .dbf .act .imp{display:block;font-size:13px;color:var(--ink-2);margin-top:2px}
 .dbf .act .dt{font:400 11.5px var(--mono);color:var(--ink-3);white-space:nowrap;padding-top:2px}
-.dbf @container (max-width:640px){.act > button{grid-template-columns:minmax(0,1fr) auto}.act .ty{grid-column:1/-1}}
+@container (max-width:640px){.dbf .act > button{grid-template-columns:minmax(0,1fr) auto}.dbf .act .ty{grid-column:1/-1}}
 .dbf .aform{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);margin:6px 0}
 .dbf .aform .input,.dbf .aform .ta,.dbf .aform .sel{background:var(--surface)}
 .dbf .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
@@ -1801,13 +1916,13 @@ body.locked{overflow:hidden}
 .dbf .doc .row2{display:flex;justify-content:space-between;gap:4px 12px;flex-wrap:wrap;font-weight:500}
 .dbf .doc .note{font:400 11.5px var(--mono);color:var(--ink-3)}
 .dbf .clk-doc{display:grid;gap:4px;margin-top:16px}
-.dbf @container (max-width:640px){.doc{padding:28px 20px}}
+@container (max-width:640px){.dbf .doc{padding:28px 20px}}
 .dbf .empty p{margin:0;max-width:60ch}
 .dbf .empty strong{color:var(--ink)}
 .dbf .spin{display:inline-block;width:13px;height:13px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .dbf .dots{font:500 11px var(--mono);letter-spacing:1px;color:var(--accent);white-space:nowrap}
-.dbf .dots .off{color:var(--border-2)}
+.dbf .dots .off{color:var(--ink-3)}
 .dbf .today-top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 20px;margin:4px 0 24px}
 .dbf .today-top .eyebrow{margin:0}
 .dbf .today-top .meta{display:flex;align-items:center;gap:10px;color:var(--ink-2);font-size:12.5px;flex-wrap:wrap}
@@ -1831,7 +1946,7 @@ body.locked{overflow:hidden}
 .dbf .hero-lbl span{font-size:12.5px;color:var(--ink-3);display:flex;align-items:center;gap:6px}
 .dbf .chip.ghost{background:none}
 .dbf .hero .mini{border-top:1px solid var(--line);padding-top:12px}
-.dbf @container (max-width:640px){.hero{padding:28px 22px 24px;border-radius:20px;gap:22px}.micbtn{width:60px;height:60px}}
+@container (max-width:640px){.dbf .hero{padding:28px 22px 24px;border-radius:20px;gap:22px}.dbf .micbtn{width:60px;height:60px}}
 .dbf .mini{list-style:none;margin:0;padding:0;display:grid}
 .dbf .mini,.dbf .todo,.dbf .daylist,.dbf .qlist,.dbf .writers{grid-template-columns:minmax(0,1fr)}
 .dbf .mini button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:8px 6px;border:0;background:none;border-radius:9px}
@@ -1857,7 +1972,8 @@ body.locked{overflow:hidden}
 .dbf .wday.today .wd{box-shadow:inset 0 0 0 1.5px var(--accent);color:var(--ink)}
 .dbf .wday .wr{height:3px;width:calc(100% - 10px);border-radius:3px;background:var(--rf,var(--line));opacity:.55}
 .dbf .wday .wc{font:400 10.5px var(--mono);color:var(--ink-3);min-height:14px}
-.dbf .wday.future{opacity:.45}
+.dbf .wday.future .wd{color:var(--ink-3)}
+.dbf .wday.future .wr{opacity:.45}
 .dbf .wsum{font-size:12.5px;color:var(--ink-3);display:flex;gap:16px;flex-wrap:wrap}
 .dbf .wsum b{color:var(--gold-ink);font-weight:500}
 .dbf .mo{display:grid;gap:6px}
@@ -1888,7 +2004,7 @@ body.locked{overflow:hidden}
 .dbf .setup{display:flex;flex-wrap:wrap;gap:10px;align-items:end}
 .dbf .setup .field{min-width:200px}
 .dbf .cal-wrap{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
-.dbf @container (max-width:900px){.cal-wrap{grid-template-columns:minmax(0,1fr)}}
+@container (max-width:900px){.dbf .cal-wrap{grid-template-columns:minmax(0,1fr)}}
 .dbf .cal{overflow:hidden}
 .dbf .cal-dow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-bottom:1px solid var(--border)}
 .dbf .cal-dow span{padding:10px 10px 8px;font:500 10.5px var(--mono);text-transform:none;color:var(--ink-3);overflow:hidden}
@@ -1910,7 +2026,7 @@ body.locked{overflow:hidden}
 .dbf .msum .prog{width:140px}
 .dbf .daydone{display:flex;align-items:center;gap:8px;color:var(--gold-ink);font-size:13px;font-weight:500}
 .dbf .cal-gap{height:26px;flex:none}
-.dbf .ep{display:flex;align-items:center;gap:6px;width:100%;font:500 12px var(--ui);padding:2px 6px;border-radius:6px;color:var(--ink);background:none;border:0;text-align:left;min-width:0}
+.dbf .ep{display:flex;align-items:center;gap:6px;width:100%;font:500 12px var(--ui);padding:2px 6px;border-radius:6px;color:var(--ink);background:none;border:0;text-align:left;min-width:0;cursor:pointer}
 .dbf .ep span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dbf .ep:hover{background:var(--surface)}
 .dbf .ep .dot{width:6px;height:6px}
@@ -1918,13 +2034,7 @@ body.locked{overflow:hidden}
 .dbf .cal-dotrow{display:none;gap:3px;padding:0 4px;flex-wrap:wrap}
 .dbf .cal-dotrow i{width:6px;height:6px;border-radius:50%;background:var(--rf,var(--accent))}
 .dbf .cal-bar{position:absolute;top:34px;height:21px;border-radius:6px;background:var(--rb);color:var(--rf);font:500 11.5px/21px var(--ui);padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
-.dbf @container (max-width:620px){.cal-d{min-height:66px;padding:4px 3px}
-  .cal-d .ep,.cal-d .ep-more{display:none}
-  .cal-dotrow{display:flex}
-  .cal-bar{height:4px;top:31px;font-size:0;padding:0;border-radius:3px;background:var(--rf)}
-  .cal-gap{height:10px}
-  .cal-dow span{padding:8px 4px;text-align:center}
-  .dn{margin-inline:auto}}
+@container (max-width:620px){.dbf .cal-d{min-height:66px;padding:4px 3px}.dbf .cal-d .ep,.dbf .cal-d .ep-more{display:none}.dbf .cal-dotrow{display:flex}.dbf .cal-bar{height:4px;top:31px;font-size:0;padding:0;border-radius:3px;background:var(--rf)}.dbf .cal-gap{height:10px}.dbf .cal-dow span{padding:8px 4px;text-align:center}.dbf .dn{margin-inline:auto}}
 .dbf .daylist{list-style:none;margin:0;padding:0;display:grid;gap:6px}
 .dbf .dayitem{display:grid;gap:4px;width:100%;text-align:left;padding:10px 12px;border:1px solid var(--border);border-radius:11px;background:var(--surface);border-left:3px solid var(--rf)}
 .dbf .dayitem:hover{background:var(--surface-2)}
@@ -1948,7 +2058,7 @@ body.locked{overflow:hidden}
 @keyframes fresh{from{background:var(--gold-soft)}}
 .dbf .jr .tg{display:flex;gap:4px;align-items:center}
 .dbf .jr .dt{font:400 12px var(--mono);color:var(--ink-3);white-space:nowrap;text-align:right}
-.dbf @container (max-width:640px){.jr .tg{display:none}.jr{grid-template-columns:minmax(0,1fr) auto;padding:12px 12px 12px 16px}}
+@container (max-width:640px){.dbf .jr .tg{display:none}.dbf .jr{grid-template-columns:minmax(0,1fr) auto;padding:12px 12px 12px 16px}}
 .dbf .sumrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
 .dbf .sum{padding:14px 16px;display:grid;gap:8px}
 .dbf .sum b{font:500 26px/1 var(--display);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
@@ -1996,7 +2106,7 @@ body.locked{overflow:hidden}
 .dbf .srow.hdr{font:500 10.5px var(--mono);text-transform:none;color:var(--ink-3)}
 .dbf .swatch{width:26px;height:26px;border-radius:8px;border:0;background:var(--rb);display:grid;place-items:center}
 .dbf .swatch i{width:10px;height:10px;border-radius:50%;background:var(--rf)}
-.dbf @container (max-width:640px){.srow{grid-template-columns:28px minmax(0,1fr) 30px}.srow .sd,.srow .sw{grid-column:2 / span 1}.srow.hdr{display:none}}
+@container (max-width:640px){.dbf .srow{grid-template-columns:28px minmax(0,1fr) 30px}.dbf .srow .sd,.dbf .srow .sw{grid-column:2 / span 1}.dbf .srow.hdr{display:none}}
 .dbf .klist{list-style:none;margin:0;padding:0;border:1px solid var(--border);border-radius:12px;overflow:hidden}
 .dbf .klist li{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line);min-width:0}
 .dbf .klist li:last-child{border-bottom:0}
@@ -2110,7 +2220,7 @@ body.locked{overflow:hidden}
 .dbf .fb{display:flex;gap:8px;align-items:flex-start;font-size:13.5px;margin:4px 0}
 .dbf .fb q{quotes:"“" "”"}
 .dbf .tone{font:500 10px/16px var(--mono);text-transform:none;padding:0 5px;border-radius:4px;flex:none;margin-top:2px}
-.dbf .tone.positive{color:var(--good);background:color-mix(in srgb,var(--good) 12%,transparent)}
+.dbf .tone.positive{color:var(--gold-ink);background:color-mix(in srgb,var(--good) 12%,transparent)}
 .dbf .tone.constructive{color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,transparent)}
 .dbf .x{appearance:none;border:0;background:none;color:var(--ink-3);font-size:16px;line-height:1;padding:0 4px;margin-left:auto}
 .dbf .x:hover{color:var(--bad)}
@@ -2248,3 +2358,24 @@ body.locked{overflow:hidden}
 .dbf.dbf-host{padding-left:0;padding-right:0;background:transparent}
 .dbf.dbf-host{grid-template-columns:minmax(0,1fr)}.dbf-host > .view{min-width:0}
 @media (max-width:640px){.dbf-today .hero{padding:16px}}
+/* phones: a title gets two lines instead of being cut to "Presented a …" */
+@container (max-width:640px){.dbf .jr .tt{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.dbf .jr .dt{align-self:start}}
+/* narrow screens: card headers and their actions wrap instead of pushing the page sideways */
+@media (max-width: 560px){
+  .dbf .card-h{flex-wrap:wrap;padding:16px 16px 0}
+  .dbf .card-h .act{flex-wrap:wrap}
+  .dbf .card-b{padding-left:16px;padding-right:16px}
+  .dbf .rowacts .btn{white-space:normal;text-align:left;max-width:100%}
+  .dbf .vh{flex-wrap:wrap}
+}
+/* whatever the student types (or pastes), a long unbroken string wraps instead of widening the page. break-word, not
+   anywhere: anywhere also shrinks how narrow a box may get, and auto-sized columns then collapse to one letter wide */
+.dbf .tt,.dbf .ol,.dbf .cmd-out,.dbf .fb,.dbf .star,.dbf .clk-doc,.dbf .empty p{overflow-wrap:break-word}
+
+/* The port wrote these width rules as ".dbf @container (...)", which browsers drop as invalid CSS, so Debrief's grids
+   never collapsed: History at phone width had 12 columns of 10px and text one letter wide. They are real container
+   queries now, measured against the Debrief pages and Today's debrief card. */
+.dbf-host,.dbf.dbf-today{container-type:inline-size}
+/* the selected day's entries in History: a title with no spaces in it wraps inside the card */
+.dbf .dayitem{grid-template-columns:minmax(0,1fr)}
+.dbf .dayitem > *{min-width:0;overflow-wrap:break-word}

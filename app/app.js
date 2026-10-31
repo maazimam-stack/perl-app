@@ -113,7 +113,7 @@ window.PERL_SHARED = Object.freeze({
   scheds: () => clone(own().scheds || []),
   profile: () => ({ name: own().profile.name || "", myName: own().profile.myName || "" }),
   /* School's dated obligations (rotation, profile and calendar deadlines; clerkship-schedule items are already shared above) */
-  deadlines: () => (state.example || !booted ? [] : allDated()).filter((x) => !x.sched).map((x) => ({ date: isoD(x.date), label: x.label, code: x.code || "", status: itemState(x), holiday: !!x.holiday, monthOnly: !!x.monthOnly }))
+  deadlines: () => (state.example || !booted ? [] : allDated()).filter((x) => !x.sched && !x.feed).map((x) => ({ date: isoD(x.date), label: x.label, code: x.code || "", status: itemState(x), holiday: !!x.holiday, monthOnly: !!x.monthOnly }))
 });
 const sharedChanged = () => document.dispatchEvent(new CustomEvent("perl:shared"));
 
@@ -250,8 +250,8 @@ const SECTIONS = [
   { k: "habits", l: "Habits", home: "habits", pages: [["habits", "Habits"]] },
   { k: "career", l: "Career", home: "career", pages: [["career", "Career"]] }
 ];
-const SETTINGS_PAGES = [["profile", "Profile and settings"], ["dsettings", "Debrief settings"]];
-const TITLES = { today: "Today", calendar: "Calendar", rotations: "Rotations", progress: "Progress", policies: "Policies", ask: "Ask the policies", health: "Policy health", profile: "Profile and settings", schedule: "Schedule", setup: "Set up", journal: "Journal", history: "History", vault: "Residency vault", mspe: "MSPE", dsettings: "Debrief settings", boot: "Perl", habits: "Habits", career: "Career" };
+const SETTINGS_PAGES = [["profile", "Profile and settings"], ["connect", "Connections"], ["dsettings", "Debrief settings"]];
+const TITLES = { offline: "Can't reach your plan", today: "Today", calendar: "Calendar", rotations: "Rotations", progress: "Progress", policies: "Policies", ask: "Ask the policies", health: "Policy health", profile: "Profile and settings", schedule: "Schedule", setup: "Set up", journal: "Journal", history: "History", vault: "Residency vault", mspe: "MSPE", dsettings: "Debrief settings", boot: "Charted", habits: "Habits", career: "Career", connect: "Connections" };
 const SPACE = { journal: "debrief", history: "debrief", vault: "debrief", mspe: "debrief", dsettings: "debrief", progress: "school", rotations: "school", policies: "school", ask: "school", health: "school", schedule: "school" };
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");
 const KBD = IS_MAC ? "⌘K" : "Ctrl K";
@@ -267,8 +267,8 @@ function navLink(sec) {
   return `<a href="#${sec.home}" class="${sec.sp ? "sp-" + sec.sp : ""}" ${cur ? 'aria-current="page"' : ""}><svg viewBox="0 0 18 18" aria-hidden="true">${ICON[sec.k] || ICON[sec.home]}</svg><span>${esc(sec.l)}</span></a>`;
 }
 function navHtml() {
-  return `<button class="side-new" data-act="new" aria-keyshortcuts="N"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M9 3.5v11M3.5 9h11"/></svg><span>New debrief</span><kbd>N</kbd></button>
-  <button class="side-search" data-act="palette" aria-keyshortcuts="${IS_MAC ? "Meta+K" : "Control+K"}"><svg viewBox="0 0 18 18" aria-hidden="true">${ICON.search}</svg><span>Search or ask</span><kbd>${KBD}</kbd></button>
+  return `<button class="side-new" data-act="new" aria-keyshortcuts="N"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M9 3.5v11M3.5 9h11"/></svg><span>New debrief</span><kbd aria-hidden="true">N</kbd></button>
+  <button class="side-search" data-act="palette" aria-keyshortcuts="${IS_MAC ? "Meta+K" : "Control+K"}"><svg viewBox="0 0 18 18" aria-hidden="true">${ICON.search}</svg><span>Search or ask</span><kbd aria-hidden="true">${KBD}</kbd></button>
   <nav class="nav" aria-label="Main">${SECTIONS.map(navLink).join("")}</nav>`;
 }
 /* the tabs inside a section: shown only when the section has more than one page */
@@ -293,15 +293,16 @@ function scopeHtml() {
     <button class="scope" data-act="me-menu" aria-expanded="${ui.meOpen ? "true" : "false"}" aria-controls="me-menu" ${on ? 'aria-current="page"' : ""}><span class="avatar" aria-hidden="true">${initials()}</span><span class="scope-t"><b>${esc(who)}</b><small>Class of ${D.grad.getFullYear()} · ${esc(phaseLabel(pr.phase))}</small></span><svg class="me-chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 10l4-4 4 4"/></svg></button>
     <div class="me-menu" id="me-menu" ${ui.meOpen ? "" : "hidden"}>
       <a href="#profile" ${ui.view === "profile" ? 'aria-current="page"' : ""}>Profile and settings</a>
+      <a href="#connect" ${ui.view === "connect" ? 'aria-current="page"' : ""}>Connections</a>
       <a href="#dsettings" ${ui.view === "dsettings" ? 'aria-current="page"' : ""}>Debrief settings</a>
       ${window.PERL_ACCOUNT ? `<a href="#profile" data-act="go-acct">Account</a>` : ""}
       ${themeBtn()}
     </div>
   </div>`;
 }
-const MARK = `<svg class="mark" width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="var(--teal, #4fb3a5)"/><circle cx="17.56" cy="14.44" r="12.8" fill="var(--debrief, #7d9fe0)"/><circle cx="19.25" cy="12.75" r="10.4" fill="var(--text, #eceeee)"/></svg>`;
+const MARK = `<svg class="mark" width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><g transform="translate(-0.2 0)"><path d="M23.13 24.5A11.1 11.1 0 1 1 17.54 5.01" fill="none" stroke="var(--debrief, #7d9fe0)" stroke-width="2.9" stroke-linecap="round"/><circle cx="25.61" cy="10.45" r="3.5" fill="var(--debrief, #7d9fe0)"/></g></svg>`;
 function brandHtml() {
-  return `<a class="brand" href="#today">${MARK}<span><b>Perl</b><small>Carle Illinois MD</small></span></a>`;
+  return `<a class="brand" href="#today">${MARK}<span><b>Charted</b><small>Carle Illinois MD</small></span></a>`;
 }
 /* ----- light and dark: follows the device until you choose; the choice stays in this browser ----- */
 /* ----- appearance: Dark (default), Light or Match device; one choice for both spaces, kept on this device -----
@@ -334,22 +335,42 @@ new MutationObserver(() => { if (modeNow() === "system") modeChanged(); }).obser
 if (window.matchMedia) { const mq = window.matchMedia("(prefers-color-scheme: light)"); if (mq.addEventListener) mq.addEventListener("change", () => { if (modeNow() === "system") modeChanged(); }); }
 function themeBtn() {
   const dark = themeNow() === "dark";
-  return `<button class="theme-btn" data-act="theme-toggle" aria-label="Switch to ${dark ? "light" : "dark"} mode" title="Switch to ${dark ? "light" : "dark"} mode">${dark ? MOON : SUN}<span>${dark ? "Dark" : "Light"}</span><span class="theme-sw" aria-hidden="true"><i></i></span></button>`;
+  return `<button class="theme-btn" data-act="theme-toggle" role="switch" aria-checked="${dark}" title="Switch to ${dark ? "light" : "dark"} mode">${dark ? MOON : SUN}<span>${dark ? "Dark" : "Light"} mode</span><span class="theme-sw" aria-hidden="true"><i></i></span></button>`;
 }
 function themeSeg() {
   const cur = modeNow();
   return `<div class="seg" role="group" aria-label="Appearance">${[["system", "Match device"], ["light", "Light"], ["dark", "Dark"]].map(([k, l]) => `<button aria-pressed="${cur === k}" data-act="theme" data-v="${k}">${l}</button>`).join("")}</div>`;
 }
 function shell() {
+  const sig = focusSig(document.activeElement);
+  shellDraw();
+  if (sig && sig.zone !== "view" && sig.zone !== "dbf-views") restoreFocus(sig, true);
+}
+function shellDraw() {
   $("#side").innerHTML = `${brandHtml()}${navHtml()}<div class="side-foot">${ui.sheet ? "" : scopeHtml()}<p>Unofficial student tool. Policies read Oct 26, 2026; the linked PDFs govern.</p></div>`;
   const sub = $("#subnav"); if (sub) sub.innerHTML = subnavHtml();
-  $("#tb-name").textContent = TITLES[ui.view] || "Policy Navigator";
+  $("#tb-name").textContent = TITLES[ui.view] || "Charted";
+  document.title = ui.view === "boot" ? "Charted" : `${TITLES[ui.view] || "Charted"} · Charted`;
   const sheet = $("#sheet");
   sheet.dataset.open = ui.sheet ? "true" : "false";
   sheet.innerHTML = ui.sheet ? `<div class="sheet-top">${brandHtml()}<button class="btn small" data-act="sheet-close">Close</button></div>${navHtml()}<div class="side-foot">${scopeHtml()}</div>` : "";
 }
 
 function exampleNotice() { return ""; } /* the sandbox banner is drawn once, by render() */
+/* when saving to the account isn't working, say so once at the top of every page, with the one thing to do about it */
+function syncNotice() {
+  if (ui.view === "boot" || state.example) return "";
+  const pr = STORE.problem();
+  if (ui.tabConflict) { const dev = ui.tabConflict === "account"; return `<div class="notice warn" role="alert"><span>${dev ? "Your plan also changed on another device while this one was offline" : "Charted is open in another tab"}, and the same thing was changed in both. ${dev ? "This device's" : "This tab's"} version is the one saved; everything else from both is kept.</span><span class="notice-acts"><button class="btn small" data-act="sync-reload">Use the ${dev ? "other device's" : "other tab's"}</button><button class="btn small quiet" data-act="sync-keep">Keep ${dev ? "this device's" : "this tab's"}</button></span></div>`; }
+  if (pr === "session_expired") return `<div class="notice warn" role="status"><span>Your sign-in expired. Your changes are kept in this browser and save to your account when you sign in again.</span>${window.PERL_ACCOUNT && window.PERL_ACCOUNT.reauth ? `<button class="btn small" data-act="reauth">Sign in again</button>` : ""}</div>`;
+  if (pr || STORE.offline()) return `<div class="notice warn" role="status"><span>Can't reach your account right now${STORE.offline() ? ", so this is the copy saved in this browser" : ""}. Changes are kept here and save when you're back online.</span><button class="btn small" data-act="sync-retry">Try again</button></div>`;
+  return "";
+}
+function vOffline() {
+  return `<div class="title-row"><div><h1>Can't reach your plan</h1><p class="finding">Charted couldn't load your saved plan from your account, and this browser has no copy of it yet. Nothing is lost: your plan is still in your account.</p></div></div>
+  <section class="panel"><p>Check your connection, then try again. Charted also tries again on its own when your device is back online.</p>
+  <div class="panel-foot"><span class="hint">${esc(STORE.problem() === "session_expired" ? "Your sign-in may have expired." : "Offline, or the server is down.")}</span><button class="btn primary small" data-act="sync-retry">Try again</button></div></section>`;
+}
 function sandboxNotice() {
   return state.example && ui.view !== "boot" ? `<div class="notice" role="status"><span>You're exploring example data: a Class of 2028 student on Track 2A. Nothing you change here is saved, and none of it touches your own plan.</span><button class="btn small" data-act="example-exit">Back to my plan</button></div>` : "";
 }
@@ -448,7 +469,8 @@ function allDated() {
     const hol = HOLIDAY_RE.test(e.l);
     return { date: parseD(e.d), label: e.l, rule: e.src === "Calendar" ? "AY2026-27 academic calendar" : "", code: e.src === "Calendar" ? "" : e.src, w: hol ? 0 : /deadline|due|application/i.test(e.l) ? 3 : 1, holiday: hol };
   });
-  return [...mine, ...rotationItems(), ...schedItems(), ...cal].filter((x) => x.date).map((x) => ({ ...x, done: !!(state.done && state.done[itemKey(x)]) }));
+  const feeds = typeof window.PERL_FEEDS === "function" ? window.PERL_FEEDS() : [];   /* connect.js: Outlook, Canvas and .ics events; read-only, never checked off */
+  return [...mine, ...rotationItems(), ...schedItems(), ...cal, ...feeds].filter((x) => x.date).map((x) => ({ ...x, done: !x.feed && !!(state.done && state.done[itemKey(x)]) }));
 }
 function upcoming(limit) {
   const t = today();
@@ -486,7 +508,7 @@ function itemState(u) {
   if (u.holiday) return "hol";
   const n = diffDays(today(), u.date);
   if (u.w === 4 && n < 0) return "breach";
-  if (n < 0) return (u.w || 0) >= 2 && n >= -14 ? "slipped" : "past";
+  if (n < 0) return !u.feed && (u.w || 0) >= 2 && n >= -14 ? "slipped" : "past"; /* calendar-feed items are read-only, so a past one is just past */
   if (n <= SOON && (u.w || 0) >= 2) return "soon";
   return "later";
 }
@@ -710,18 +732,25 @@ function drawerHtml() {
   }
   return "";
 }
-let drawerTimer = null; let drawerReturn = null;
+let drawerTimer = null; let drawerReturn = null; let drawerReturnSig = null;
 function renderDrawer() {
   const el = $("#drawer"); if (!el) return;
   if (!ui.drawer) return;
+  /* a page re-render (a check-off settling, a sync) redraws the open drawer too: keep focus where it was inside it */
+  const a = document.activeElement; const inside = !!(a && a !== el && el.contains(a));
+  const was = inside ? { id: a.id, ds: JSON.stringify(a.dataset || {}), tag: a.tagName } : null;
   const body = el.querySelector(".dr-body"); const top = body ? body.scrollTop : 0;
   el.innerHTML = drawerHtml();
   const nb = el.querySelector(".dr-body"); if (nb) nb.scrollTop = top;
+  if (was) {
+    const t = (was.id && document.getElementById(was.id)) || [...el.querySelectorAll(was.tag)].find((x) => JSON.stringify(x.dataset || {}) === was.ds) || el.querySelector("[data-act='drawer-close']");
+    if (t) t.focus({ preventScroll: true });
+  }
 }
 function openDrawer(type, id) {
   const el = $("#drawer"); if (!el) return;
   const wasOpen = !!ui.drawer;
-  if (!wasOpen) drawerReturn = document.activeElement;
+  if (!wasOpen) { drawerReturn = document.activeElement; drawerReturnSig = focusSig(drawerReturn); }
   clearTimeout(drawerTimer);
   ui.drawer = { type, id };
   el.innerHTML = drawerHtml();
@@ -735,7 +764,8 @@ function closeDrawer() {
   drawerTimer = setTimeout(() => { if (!ui.drawer) el.innerHTML = ""; }, 360);
   if (ui.view === "calendar") render();
   if (drawerReturn && drawerReturn.isConnected) drawerReturn.focus({ preventScroll: true });
-  drawerReturn = null;
+  else if (drawerReturnSig) { if (el.contains(document.activeElement)) document.activeElement.blur(); restoreFocus(drawerReturnSig); } /* the opener was redrawn meanwhile: its replacement */
+  drawerReturn = null; drawerReturnSig = null;
 }
 
 /* ================= command palette: search, jump, ask ================= */
@@ -811,6 +841,21 @@ function palRender() {
 }
 const MODAL_CLOSE_MS = 150;
 let palReturn = null;
+/* Keep Tab inside an open dialog (WCAG 2.4.3): cycle within `root`, and pull focus back in when it has strayed. */
+const FOCUSABLE = "a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex='-1'])";
+function trapTab(ev, root) {
+  if (!root || ev.key !== "Tab") return false;
+  const a = document.activeElement;
+  /* another layer is on top (palette, sign-in or consent gate, a Debrief overlay, a drawer): it owns Tab, not this root */
+  if (root.closest("[inert]") || (a && !root.contains(a) && a.closest("#pal, .perl-gate, .dbf .overlay:not([hidden]), #drawer, #sheet"))) return false;
+  const f = [...root.querySelectorAll(FOCUSABLE)].filter(shown);
+  if (!f.length) { ev.preventDefault(); return true; }
+  const first = f[0], last = f[f.length - 1];
+  if (ev.shiftKey && (a === first || !root.contains(a))) { ev.preventDefault(); last.focus(); return true; }
+  if (!ev.shiftKey && (a === last || !root.contains(a))) { ev.preventDefault(); first.focus(); return true; }
+  return false;
+}
+window.PERL_TRAP = trapTab;
 function openPalette(prefill) {
   const wrap = $("#pal"); const modal = wrap && wrap.querySelector(".t-modal"); if (!modal) return;
   if (ui.sheet) { ui.sheet = false; shell(); }
@@ -832,8 +877,10 @@ function closePalette(keepFocus) {
 }
 function palRun(i) {
   const it = pal.items[i]; if (!it) return;
-  closePalette(true);
+  closePalette(true); $("#pal-q")?.blur();
   setTimeout(() => it.run(), 10);
+  /* a command that navigates leaves nothing focused; start the reader at the new page's heading */
+  setTimeout(() => { if (document.activeElement === document.body && !pal.open && !ui.drawer) pageHeading()?.focus({ preventScroll: true }); }, 200);
 }
 
 
@@ -917,11 +964,15 @@ const CHECK_PATH = `<svg viewBox="0 0 10.1668 10.1668" aria-hidden="true"><path 
 /* one dated row: check it off, read the rule, open the policy, add it to a calendar */
 function dateRow(u) {
   const k = itemKey(u); const st = itemState(u); const done = st === "done";
-  const chk = u.holiday ? `<span class="chk-pad" aria-hidden="true"></span>`
+  const chk = u.holiday || u.feed ? `<span class="chk-pad" aria-hidden="true"></span>`
     : `<button class="t-check chk" role="checkbox" aria-checked="${done}" data-act="toggle-done" data-key="${esc(k)}" aria-label="${esc(u.label)}: ${done ? "done" : "not done"}">${CHECK_PATH}</button>`;
   const when = u.monthOnly ? `<b>${MONTHS[u.date.getMonth()]}</b><span>${u.date.getFullYear()}</span>` : `<b>${WD[u.date.getDay()]}</b><span>${MONTHS[u.date.getMonth()]} ${u.date.getDate()}</span>`;
   const tone = STATE_TONE[st] || ""; const dt = dueText(u, st);
-  return `<li class="st-${st}">${chk}<div class="when num">${when}</div><div class="what"><span class="t">${esc(u.label)}</span>${u.rule ? `<small>${esc(u.rule)}</small>` : ""}</div><div class="tail">${dt ? `<span class="due ${tone} num">${tone === "amber" || tone === "red" ? `<i class="dot ${st === "breach" ? "breach" : "soon"}"></i>` : ""}${esc(dt)}</span>` : ""}${u.code ? codeBtn(u.code) : ""}<a class="gcal" href="${esc(gcalUrl(u))}" target="_blank" rel="noopener" title="Add to Google Calendar" aria-label="Add ${esc(u.label)} to Google Calendar">${CAL_PLUS}</a></div></li>`;
+  /* feed items (connect.js): the source leads the small line, and the link goes back to Outlook/Canvas instead of adding to Google */
+  const sub = u.feed ? [u.source, u.rule].filter(Boolean).join(" · ") : u.rule;
+  const out = u.feed ? (u.url ? `<a class="gcal" href="${esc(u.url)}" target="_blank" rel="noopener" title="Open in ${esc(u.source || "the source")}" aria-label="Open ${esc(u.label)} in ${esc(u.source || "the source")}">${CAL_PLUS}</a>` : "")
+    : `<a class="gcal" href="${esc(gcalUrl(u))}" target="_blank" rel="noopener" title="Add to Google Calendar" aria-label="Add ${esc(u.label)} to Google Calendar">${CAL_PLUS}</a>`;
+  return `<li class="st-${st}">${chk}<div class="when num">${when}</div><div class="what"><span class="t">${esc(u.label)}</span>${sub ? `<small>${esc(sub)}</small>` : ""}</div><div class="tail">${dt ? `<span class="due ${tone} num">${tone === "amber" || tone === "red" ? `<i class="dot ${st === "breach" ? "breach" : "soon"}"></i>` : ""}${esc(dt)}</span>` : ""}${u.code ? codeBtn(u.code) : ""}${out}</div></li>`;
 }
 
 /* ----- files ----- */
@@ -956,7 +1007,7 @@ async function saveFile(filename, text, mime) {
   } catch { toast("Couldn't create the file in this browser."); return false; }
 }
 function exportIcs() {
-  const t = today(); const items = allDated().filter((x) => x.date >= t && !x.done).sort((a, b) => a.date - b.date);
+  const t = today(); const items = allDated().filter((x) => x.date >= t && !x.done && !x.feed).sort((a, b) => a.date - b.date);
   if (!items.length) { toast("No upcoming dates to add."); return; }
   saveFile("ci-med-deadlines.ics", buildIcs(items), "text/calendar");
 }
@@ -973,10 +1024,24 @@ function exportHealthCsv() {
 
 /* ----- toast ----- */
 let toastTimer = null;
-function toast(msg) {
+/* a short message; with an action (like Undo) it stays a little longer and the action is one tap away */
+function toast(msg, action) {
   const el = document.getElementById("toast"); if (!el) return;
-  el.textContent = msg; el.classList.add("is-open");
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("is-open"), 2600);
+  el.textContent = msg;
+  if (action && action.label && typeof action.fn === "function") {
+    const b = document.createElement("button"); b.type = "button"; b.className = "toast-act"; b.textContent = action.label;
+    b.addEventListener("click", () => { el.classList.remove("is-open"); clearTimeout(toastTimer); action.fn(); });
+    el.append(b);
+  }
+  el.classList.add("is-open");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("is-open"), action ? 7000 : 2600);
+}
+/* removing something is one tap, and so is putting it back */
+function removeWithUndo(key, id, what) {
+  const list = state[key] || []; const i = list.findIndex((x) => x.id === id); if (i < 0) return null;
+  const [gone] = list.splice(i, 1); persist(); render();
+  toast(`Removed ${what || gone.name}.`, { label: "Undo", fn: () => { const l = state[key] || (state[key] = []); if (!l.some((x) => x.id === gone.id)) l.splice(Math.min(i, l.length), 0, gone); persist(); render(); toast(`${what || gone.name} is back.`); } });
+  return gone;
 }
 
 /* ----- grades: APS-13 says 4 weeks, LCME element 9.8 says 6 ----- */
@@ -1096,7 +1161,7 @@ function rotationsPanel() {
 /* ----- Today: one focal point (the current rotation and what needs you next), quiet figures beneath ----- */
 function nextAction(cur) {
   const t = today();
-  return allDated().filter((x) => !x.done && !x.holiday && (x.w || 0) >= 2 && x.date >= addDays(t, -14) && !(cur && x.rot === cur.id && x.short === "Ends"))
+  return allDated().filter((x) => !x.done && !x.holiday && (x.w || 0) >= 2 && x.date >= addDays(t, -14) && !(x.feed && x.date < t) && !(cur && x.rot === cur.id && x.short === "Ends"))
     .sort((a, b) => a.date - b.date || (b.w || 0) - (a.w || 0))[0] || null;
 }
 function heroFact(cur, nx) {
@@ -1115,6 +1180,8 @@ function weeksMeter(cur) {
   const segs = Array.from({ length: n }, (_, i) => { const f = Math.max(0, Math.min(1, (day - i * 7) / Math.min(7, len - i * 7))); return `<i${f >= 1 ? ' class="full"' : ""}>${f > 0 && f < 1 ? `<b style="width:${(f * 100).toFixed(0)}%"></b>` : ""}</i>`; }).join("");
   return `<span class="weeks" role="img" aria-label="Day ${day} of ${len}, week ${Math.floor((day - 1) / 7) + 1} of ${n}">${segs}</span>`;
 }
+/* "starts tomorrow", "starts on Monday", or a date when it's further off */
+function startsWhen(d) { const n = diffDays(today(), d); return n >= 1 && n < 7 ? `starts ${relWhen(d)} (${fmtShort(d)})` : `from ${WD[d.getDay()]}, ${fmtShort(d)}`; }
 function heroHtml() {
   const t = today(); const pr = state.profile; const cur = currentRotation(); const nr = nextRotation(); const nx = nextAction(cur);
   const h = new Date().getHours(); const hello = h < 5 ? "Good evening" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
@@ -1129,8 +1196,8 @@ function heroHtml() {
   if (cur) {
     const len = diffDays(cur.s, cur.e) + 1; const day = diffDays(cur.s, t) + 1;
     rot = `<div class="hero-rot">${weeksMeter(cur)}
-      <p class="hero-sub num"><button class="link" data-act="open-rot" data-id="${esc(cur.id)}">${esc(cur.name)}</button>, day ${day} of ${len}, until ${WD[cur.e.getDay()]}, ${fmtShort(cur.e)}.${nr ? ` Then <button class="link" data-act="open-rot" data-id="${esc(nr.id)}">${esc(rotShort(nr.name))}</button> from ${WD[nr.s.getDay()]}, ${fmtShort(nr.s)}.` : ""}</p></div>`;
-  } else if (nr) rot = `<p class="hero-sub">Next: <button class="link" data-act="open-rot" data-id="${esc(nr.id)}">${esc(rotShort(nr.name))}</button> from ${WD[nr.s.getDay()]}, ${fmtShort(nr.s)}.</p>`;
+      <p class="hero-sub num"><button class="link" data-act="open-rot" data-id="${esc(cur.id)}">${esc(cur.name)}</button>, day ${day} of ${len}, until ${WD[cur.e.getDay()]}, ${fmtShort(cur.e)}.${nr ? ` Then <button class="link" data-act="open-rot" data-id="${esc(nr.id)}">${esc(rotShort(nr.name))}</button> ${startsWhen(nr.s)}.` : ""}</p></div>`;
+  } else if (nr) rot = `<p class="hero-sub">Next: <button class="link" data-act="open-rot" data-id="${esc(nr.id)}">${esc(rotShort(nr.name))}</button> ${startsWhen(nr.s)}.</p>`;
   const next = nx ? `<ul class="rows next-rows">${dateRow(nx)}</ul>` : `<p class="hero-hint">Nothing needs you in the next ${SOON} days.</p>`;
   return `<section class="hero" aria-labelledby="h-hero">
     <div class="hero-main"><p class="hero-meta">${meta}</p><h1 id="h-hero">${esc(heroFact(cur, nx))}</h1>${rot}</div>
@@ -1250,11 +1317,11 @@ function journeyHtml() {
   const marks = ms.map((m) => `<span class="j-ms ${m.side}${m.cls ? " " + m.cls : ""}${m.strong ? " strong" : ""}${m.end ? " end" : ""}" style="left:${m.x.toFixed(2)}%"><i></i><span class="j-l"><b>${esc(m.l)}</b><small class="num">${esc(m.sub)}</small></span></span>`).join("");
   const set = pr.reqSet || "both"; const list = applicableReqs(); const prog = reqProgress();
   const cols = ph.map((p) => {
-    if (p.k === "room") return `<div class="j-col room"><h3>After graduation</h3><p class="num">${Math.max(0, monthsBetween(D.grad, D.mdLimit))} months of room before the 6-year limit in ${fmtMonth(D.mdLimit)}.</p><p class="muted">Leave for another degree pauses this clock; other leave doesn't (APS-33).</p></div>`;
+    if (p.k === "room") return `<div class="j-col room"><h2>After graduation</h2><p class="num">${Math.max(0, monthsBetween(D.grad, D.mdLimit))} months of room before the 6-year limit in ${fmtMonth(D.mdLimit)}.</p><p class="muted">Leave for another degree pauses this clock; other leave doesn't (APS-33).</p></div>`;
     const rs = list.filter((r) => r.sec === p.sec); const done = rs.filter((r) => state.req[r.id] === "done").length;
-    return `<div class="j-col"><h3>${esc(p.label)}<span class="num">${done} of ${rs.length}</span></h3><div class="j-tiles">${rs.map((r) => {
+    return `<div class="j-col"><h2>${esc(p.label)}<span class="num">${done} of ${rs.length}</span></h2><div class="j-tiles">${rs.map((r) => {
       const st = state.req[r.id] || "todo"; const differs = set === "both" && r.v6 && r.v61 && r.v6 !== r.v61;
-      return `<button class="jt ${st}" data-act="tile" data-id="${r.id}" aria-label="${esc(r.label)}: ${STATUS[st][0]}. Select to change." title="${esc(r.label)}${differs ? " (the two rulebooks differ here)" : ""}"><span class="jt-i" aria-hidden="true">${TICK_SVG}</span><span class="jt-t">${esc(SHORT[r.id] || r.label)}<small>${STATUS[st][0]}${differs ? ` · <em>rulebooks differ</em>` : ""}</small></span></button>`;
+      return `<button class="jt ${st}" data-act="tile" data-id="${r.id}" title="${esc(r.label)}${differs ? " (the two rulebooks differ here)" : ""}"><span class="jt-i" aria-hidden="true">${TICK_SVG}</span><span class="jt-t">${esc(SHORT[r.id] || r.label)}<small>${STATUS[st][0]}${differs ? ` · <em>rulebooks differ</em>` : ""}</small></span><span class="sr">. Select to change.</span></button>`;
     }).join("")}</div></div>`;
   }).join("");
   const toGrad = monthsBetween(t, D.grad);
@@ -1346,7 +1413,7 @@ function auditPanel() {
       <span class="hint">Read in this browser; nothing is uploaded. Nothing changes until you apply it.</span>
       <div style="display:flex;gap:8px"><button class="btn small" data-act="close-audit">Cancel</button><button class="btn primary small" data-act="run-audit" ${a.status === "reading" ? "disabled" : ""}>${a.status === "parsing" ? "Reading your audit…" : a.status === "reading" ? "Opening file…" : "Read my audit"}</button></div>
     </div>`;
-  return `<section class="panel" aria-labelledby="h-audit"><div class="panel-head"><h2 id="h-audit">Import degree audit</h2><span class="aside">Read and kept in this browser only</span></div>${body}</section>`;
+  return `<section class="panel" aria-labelledby="h-audit"><div class="panel-head"><h2 id="h-audit" tabindex="-1">Import degree audit</h2><span class="aside">Read and kept in this browser only</span></div>${body}</section>`;
 }
 function matchElective(e) {
   const n = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -1433,7 +1500,7 @@ function runAudit() {
     render(); return;
   }
   ui.audit.result = r; ui.audit.status = "review"; ui.audit.pick = {}; ui.audit.error = "";
-  render();
+  render(); refocus("#h-audit");
 }
 function applyAudit() {
   const r = ui.audit.result; if (!r) return;
@@ -1563,6 +1630,11 @@ function customPlan(auditRots, base) {
   return out.sort((a, b) => a.start.localeCompare(b.start));
 }
 function setCustomRotations(rots, base) {
+  /* clerkships the student added or edited by hand survive a re-import, unless the audit itself lists that clerkship;
+     the audit's dates are the official ones. A track's guess never replaces the student's own dates. */
+  const audited = new Set(rots.filter((r) => r.src === "audit").map((r) => r.name));
+  const own = (state.rotations || []).filter((r) => r.kind === "clerkship" && !["audit", "base", "track"].includes(r.src) && !audited.has(r.name) && !rots.some((x) => x.id === r.id));
+  rots = rots.filter((r) => !(r.src === "base" && own.some((m) => m.name === r.name))).concat(own);
   const keep = (state.rotations || []).filter((r) => r.kind !== "clerkship" && !/^Elective \(block/.test(r.name));
   const grades = Object.fromEntries((state.rotations || []).filter((r) => r.gradePosted).map((r) => [r.name + r.start, r.gradePosted]));
   state.rotations = keep.concat(rots.map((r) => (grades[r.name + r.start] ? { ...r, gradePosted: grades[r.name + r.start] } : r)));
@@ -1732,7 +1804,7 @@ function vRotations() {
   </div>
   <section class="panel" aria-labelledby="h-rules">
     <div class="panel-head"><h2 id="h-rules">Every timed rule</h2><span class="aside">${allRules.length} windows across the policies</span></div>
-    <div class="table-wrap"><table><thead><tr><th>Rule</th><th>Window</th><th>Source</th><th></th></tr></thead><tbody>
+    <div class="table-wrap"><table><thead><tr><th>Rule</th><th>Window</th><th>Source</th><th><span class="sr">Calculator</span></th></tr></thead><tbody>
     ${allRules.map((r) => `<tr><td>${esc(r.l)}</td><td class="muted">${esc(r.w)}</td><td>${codeBtn(r.code)}</td><td class="num">${r.calc ? `<button class="btn quiet small" data-act="use-calc" data-calc="${esc(r.calc)}">Work it out</button>` : ""}</td></tr>`).join("")}
     </tbody></table></div>
     <div class="panel-foot"><a class="link" href="${CAL_URL}" target="_blank" rel="noopener">Open the AY2026-27 calendar PDF</a><span class="hint">Gateway OSCE dates: to be determined</span></div>
@@ -1781,7 +1853,7 @@ function vPolicies() {
   </div>
   <div class="split ${ui.sel ? "has-sel" : ""}">
     <section class="panel plist" aria-label="Policy list">
-      ${list.length ? list.map((p) => `<button class="prow" role="option" aria-selected="${selected && selected.c === p.c}" data-act="sel-policy" data-code="${esc(p.c)}"><span class="pc">${esc(p.c)}</span><span class="pt">${esc(p.t)}<small>${esc(p.g)}</small></span><span class="pr">${policyFlags(p) || (p.eff ? "Effective " + fmtMonth(parseD(p.eff)) : "")}</span></button>`).join("") : `<div class="empty">No policy matches. Clear the search or switch the phase to All.</div>`}
+      ${list.length ? list.map((p) => `<button class="prow" aria-current="${selected && selected.c === p.c ? "true" : "false"}" data-act="sel-policy" data-code="${esc(p.c)}"><span class="pc">${esc(p.c)}</span><span class="pt">${esc(p.t)}<small>${esc(p.g)}</small></span><span class="pr">${policyFlags(p) || (p.eff ? "Effective " + fmtMonth(parseD(p.eff)) : "")}</span></button>`).join("") : `<div class="empty">No policy matches. Clear the search or switch the phase to All.</div>`}
     </section>
     <div class="detail-wrap">${selected ? policyDetail(selected) : `<section class="panel"><div class="empty">Pick a policy to read its summary.</div></section>`}</div>
   </div>`;
@@ -1860,13 +1932,13 @@ function vAsk() {
     "When will my clerkship grade be posted, and what if it's late?"
   ];
   const n = POLICIES.filter((p) => !p.ph.every((k) => k === "fac" || k === "app")).length;
-  const turns = a.turns.map((t, i) => `<div class="turn"><p class="q">${esc(t.q)}</p>${aiHtml(t, i)}<div class="answer">${hitsHtml(t.hits)}</div></div>`).reverse().join("");
+  const turns = a.turns.map((t, i) => `<div class="turn"><p class="q" id="ask-turn-${i}" tabindex="-1">${esc(t.q)}</p>${aiHtml(t, i)}<div class="answer">${hitsHtml(t.hits)}</div></div>`).reverse().join("");
   return `<div class="title-row"><div><h1>Ask the policies</h1><p class="finding">Ask in plain words. ${SAMPLE ? "Claude answers from the text of " + n + " student policies and the known conflicts, citing each code, and the rules it matched sit underneath." : "The app pulls the rules that answer it from " + n + " student policies and the known conflicts, each with its policy code."} ${KBD} asks from any page.</p></div></div>
   <section class="panel" aria-labelledby="h-ask">
     <div class="panel-head"><h2 id="h-ask">Your question</h2>${a.turns.length ? `<button type="button" class="link" data-act="ask-clear">Clear answers</button>` : ""}</div>
     <form class="ask-box" data-form="ask">
       <label class="sr" for="ask-q">Question</label>
-      <textarea id="ask-q" rows="3" style="min-height:84px" placeholder="Ask about absences, grades, Step deadlines, electives, leave…">${esc(a.draft)}</textarea>
+      <textarea id="ask-q" rows="3" maxlength="1000" style="min-height:84px" placeholder="Ask about absences, grades, Step deadlines, electives, leave…">${esc(a.draft)}</textarea>
       <div class="ask-row"><span class="hint">This is an unofficial reading. Open the policy before acting on anything high-stakes; the linked PDF governs.</span><button class="btn primary" type="submit">${SAMPLE ? "Ask" : "Find the rules"}</button></div>
     </form>
     ${turns ? `<div class="mt16">${turns}</div>` : ""}
@@ -1883,11 +1955,12 @@ function vAsk() {
 const RECENT_KEY = "pn-recent-questions";
 function recentQs() { return (state.askRecent || []).filter((x) => typeof x === "string").slice(0, 6); }
 function ask(q) {
-  q = (q || "").trim(); if (!q) return;
-  state.askRecent = [q, ...recentQs().filter((x) => x.toLowerCase() !== q.toLowerCase())].slice(0, 6); persist();
+  q = (q || "").trim(); if (!q) { toast("Type a question first, like “Can I miss a shelf exam?”"); refocus("#ask-q"); return; }
+  state.askRecent = [q.slice(0, 300), ...recentQs().filter((x) => x.toLowerCase() !== q.toLowerCase())].slice(0, 6); persist();
   const turn = { q, hits: searchRules(q), ai: SAMPLE ? { status: "thinking", text: "" } : null };
   ui.ask.turns.push(turn); ui.ask.draft = "";
   render();
+  if (ui.view === "ask") refocus(`#ask-turn-${ui.ask.turns.length - 1}`);
   if (turn.ai) askClaude(turn);
 }
 let SAMPLE = null;
@@ -1928,10 +2001,15 @@ Question: ${turn.q}`;
   const idx = ui.ask.turns.indexOf(turn);
   try {
     const out = await SAMPLE(prompt, { cache: false, onText: ({ text }) => { turn.ai.text = text; const el = document.getElementById(`ai-${idx}`); if (el) el.textContent = text; } });
-    turn.ai = { status: "done", text: out.text.trim() };
+    const text = String((out && out.text) || "").trim();
+    turn.ai = text ? { status: "done", text } : { status: "error", text: "Claude didn't send an answer back. The matching rules are below." };
   } catch (e) {
-    if (e && e.code === "not_granted") { SAMPLE = null; turn.ai = null; }
-    else turn.ai = { status: "error", text: e && e.code === "rate_limited" ? "Too many questions at once. Wait a minute and ask again; the matching rules are below." : "The matching rules are below." };
+    const c = e && e.code;
+    if (c === "not_granted") { SAMPLE = null; turn.ai = null; }
+    else turn.ai = { status: "error", text: ({ rate_limited: "Too many questions at once. Wait a minute and ask again; the matching rules are below.",
+      timeout: "Claude took too long to answer. Try again in a moment; the matching rules are below.",
+      session_expired: "Your sign-in expired. Sign in again to ask Claude; the matching rules are below.",
+      unavailable: "Couldn't reach Claude just now. The matching rules are below." })[c] || "Claude couldn't answer this time. The matching rules are below." };
   }
   if (ui.view === "ask") render();
 }
@@ -1948,14 +2026,14 @@ function vProfile() {
   const f = (id, label, input, hint) => `<div class="field"><label for="${id}">${label}</label>${input}${hint ? `<span class="hint" id="${id}-h">${hint}</span>` : ""}</div>`;
   const sel = (id, key, opts) => `<select id="${id}" data-prof="${key}">${opts.map(([v, l]) => `<option value="${v}" ${String(pr[key]) === v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
   return `${exampleNotice()}
-  <div class="title-row"><div><h1>Profile and settings</h1><p class="finding">These dates drive every deadline in the app. They're saved to a private space in your ${window.PERL_ACCOUNT ? "account" : "Claude account"} that only you can read.</p></div><div class="title-actions"><span class="saved" aria-live="polite">${esc(ui.savedNote)}</span>${themeSeg()}${state.example ? "" : `<button class="btn small" data-act="example-enter">Explore example data</button>`}</div></div>
+  <div class="title-row"><div><h1>Profile and settings</h1><p class="finding">These dates drive every deadline in the app. ${STORE.mode() === "account" ? `They're saved to a private space in your ${window.PERL_ACCOUNT ? "Charted account" : "Claude account"} that only you can read.` : "They're saved in this browser only, on this device."}</p></div><div class="title-actions"><span class="saved" aria-live="polite">${esc(ui.savedNote)}</span>${themeSeg()}<label class="chip" style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" data-act="single-keys" ${singleKeysOn() ? "checked" : ""}> Single-key shortcuts (N, /, T)</label>${state.example ? "" : `<button class="btn small" data-act="example-enter">Explore example data</button>`}</div></div>
   <div class="grid">
     <section class="panel span-2" aria-labelledby="h-prof">
       <div class="panel-head"><h2 id="h-prof">Where you are</h2></div>
       <div class="form-grid">
         ${f("p-name", "First name (optional)", `<input type="text" id="p-name" data-prof="name" value="${esc(pr.name || "")}" autocomplete="given-name" aria-describedby="p-name-h">`, "Only used to greet you on Today.")}
         ${f("p-myname", "Your name on clerkship schedules", `<input type="text" id="p-myname" data-prof="myName" value="${esc(pr.myName || "")}" autocomplete="name" aria-describedby="p-myname-h">`, "As it appears in column A of a weekly schedule. Picks out your rows when you import one.")}
-        ${schedule() ? f("p-track", "Clerkship track", `<select id="p-track" data-act="track-select"><option value="">Not set</option>${Object.keys(schedule().tracks).map((k) => `<option value="${esc(k)}" ${pr.track === k ? "selected" : ""}>Track ${esc(k)}</option>`).join("")}</select>`, `${esc(schedule().label)}. Fills in your clerkships and their deadlines.`) : ""}
+        ${schedule() ? f("p-track", "Clerkship track", `<select id="p-track" data-act="track-select"><option value="">Not set</option>${pr.track === "custom" ? `<option value="custom" selected>${esc(trackLabel(pr))}</option>` : ""}${Object.keys(schedule().tracks).map((k) => `<option value="${esc(k)}" ${pr.track === k ? "selected" : ""}>Track ${esc(k)}</option>`).join("")}</select>`, pr.track === "custom" ? `Your own dates. <a class="link" href="#schedule">Edit them in Schedule</a>, or pick a standard track here.` : `${esc(schedule().label)}. Fills in your clerkships and their deadlines.`) : ""}
         ${f("p-matric", "Matriculation date", `<input type="date" id="p-matric" data-prof="matric" value="${esc(pr.matric)}" aria-describedby="p-matric-h">`, "Your first day of the first class. Starts both APS-33 clocks.")}
         ${f("p-phase", "Current phase", sel("p-phase", "phase", [["pre", "Preclerkship"], ["ci", "Clinical Immersion"], ["fy", "Final Year"], ["loa", "On leave or in a joint degree"]]))}
         ${f("p-cistart", "Clinical Immersion start", `<input type="date" id="p-cistart" data-prof="ciStart" value="${esc(pr.ciStart)}">`)}
@@ -1972,8 +2050,8 @@ function vProfile() {
     ${accountPanel()}
     <section class="panel" aria-labelledby="h-comp2">
       <div class="panel-head"><h2 id="h-comp2">What this works out</h2></div>
-      <ul class="list two">${personalItems().map((i) => `<li><div class="what">${esc(i.label)}</div><div class="tail num">${i.monthOnly ? fmtMonth(i.date) : fmtShort(i.date)}</div></li>`).join("")}</ul>
-      <div class="panel-foot">${ui.clearConfirm ? `<span class="small">Erase your saved profile, checklist and electives?</span><span style="display:flex;gap:8px"><button class="btn small" data-act="clear-cancel">Keep</button><button class="btn small" style="color:var(--negative);border-color:var(--negative)" data-act="clear-yes">Erase</button></span>` : `<button class="btn small" style="color:var(--negative)" data-act="clear">Erase my saved data</button>`}</div>
+      <ul class="list two">${personalItems().map((i) => `<li><div class="what">${esc(i.label)}</div><div class="tail num">${i.done ? `<span class="pill pos">Done</span>` : i.monthOnly ? fmtMonth(i.date) : fmtShort(i.date)}</div></li>`).join("")}</ul>
+      <div class="panel-foot">${ui.clearConfirm ? `<span class="small">Erase your profile, schedule, checklist, electives, habits and career notes? Your Debrief journal is kept.</span><span style="display:flex;gap:8px"><button class="btn small" data-act="clear-cancel">Keep</button><button class="btn small" style="color:var(--negative);border-color:var(--negative)" data-act="clear-yes">Erase</button></span>` : `<button class="btn small" style="color:var(--negative)" data-act="clear">Erase my saved data</button>`}</div>
     </section>
   </div>`;
 }
@@ -2021,7 +2099,7 @@ function vSetup() {
   const a = ui.setupAudit;
   let lead = "", body = "", wrap = true;
   if (st === 1) {
-    lead = a ? "Your audit is in. Check your name, then continue to your plan." : "Drop your degree audit and Perl fills in your courses, Step 1, clerkships and their dates. Or set it up by hand.";
+    lead = a ? "Your audit is in. Check your name, then continue to your plan." : "Drop your degree audit and Charted fills in your courses, Step 1, clerkships and their dates. Or set it up by hand.";
     const audit = a ? `<div class="su-read" id="su-read" tabindex="-1" role="status"><span class="su-ok" aria-hidden="true">${TICK_SVG}</span><div><b>Read ${esc(a.fileName)}</b><small>${esc(plural(a.found, "course"))}${(a.rotations || []).length ? ` · ${esc(plural(a.rotations.length, "clerkship"))} with dates` : ""}. Nothing left this browser.</small></div><button class="btn quiet small" data-act="su-undo">Use a different file</button></div>`
       : `<div class="su-drop${ui.setupBusy ? " busy" : ""}" id="su-drop">
           <p class="su-drop-t">${ui.setupBusy ? "Reading your audit…" : "Drop your degree audit here"}</p>
@@ -2080,26 +2158,37 @@ function setupNext() {
 function setupDone() { state.profile.setupDone = true; persist(); ui.setupStep = 1; ui.setupAudit = null; go("today"); toast(state.profile.track ? `Plan set up on your ${trackLabel().replace(/^Track/, "track")}.` : "Plan set up. Add your track from Schedule when you know it."); }
 
 function vSchedule() {
-  return `<div class="title-row"><div><h1>Schedule</h1><p class="finding">One schedule feeds Today, the Calendar and Rotations, and your debriefs once the Debrief space arrives. Pick your track, then drop in each clerkship's weekly schedule as it comes.</p></div><div class="title-actions"><button class="btn small primary" data-act="open-audit">Import degree audit</button><a class="btn small" href="#rotations">Edit rotations</a></div></div>
+  return `<div class="title-row"><div><h1>Schedule</h1><p class="finding">One schedule feeds Today, the Calendar, Rotations and your Debrief journal. Pick your track, then drop in each clerkship's weekly schedule as it comes.</p></div><div class="title-actions"><button class="btn small primary" data-act="open-audit">Import degree audit</button><a class="btn small" href="#rotations">Edit rotations</a></div></div>
   ${state.profile.track === "custom" ? customTrackPanel() + `<details class="panel tk-std"><summary>Standard AY2026-27 tracks</summary>${trackPanel()}</details>` : trackPanel() + `<p class="hint">Off-cycle, or your dates differ from every track? <button class="link" data-act="make-custom">Make a custom track</button> and set your own dates.</p>`}
   ${dropPanel()}`;
 }
-const SOON_WHAT = {
-  journal: "Your debriefs, searchable and grouped by week, filtered by rotation and ACGME competency.",
-  history: "The days you've logged, your streak, and backdated debriefs, on the shared calendar with school deadlines underneath.",
-  vault: "Interview stories, letter writers, the clerkship by competency grid and the ERAS export.",
-  mspe: "Noteworthy characteristics, the activities inventory and the clerkship tracker, prefilled from your rotations."
-};
-function vSoon() {
-  return `<div class="title-row"><div><h1>${esc(TITLES[ui.view])}</h1><p class="finding">${esc(SOON_WHAT[ui.view] || "")}</p></div></div>
-  <section class="panel soon" aria-labelledby="h-soon">
-    <div class="panel-head"><h2 id="h-soon">Arrives in the next build</h2></div>
-    <p>The Debrief space is being ported from Perl into its own private store, which School can never read. Until it lands, keep logging debriefs in Perl; they come over with a one-time import.</p>
-    <div class="panel-foot"><span class="hint">Opens in a new tab</span><a class="btn small" href="https://claude.ai/artifact/4PpmMLb4PJdTfuLzg34ZeD" target="_blank" rel="noopener">Open Perl</a></div>
-  </section>`;
-}
 function vNone() { return ""; } /* Debrief views are drawn by the Debrief space into #dbf-views */
 function vBoot() { return `<div class="boot" aria-live="polite"><p class="muted">Opening your plan…</p></div>`; }
+
+/* ----- install as an app (standalone builds): the browser's own prompt where there is one, short steps where not ----- */
+let installPrompt = null;
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installPrompt = e; if (booted && ui.view === "profile") render(); });
+window.addEventListener("appinstalled", () => { installPrompt = null; ui.installed = true; if (booted) { toast("Charted is installed. Open it from your Dock, taskbar or apps."); if (ui.view === "profile") render(); } });
+function runningInstalled() { return !!((window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true || ui.installed); }
+function installSteps() {
+  const ua = navigator.userAgent || "";
+  if (/Edg\//.test(ua)) return "In Edge, open the … menu, then Apps › Install this site as an app.";
+  if (/Firefox\//.test(ua)) return "Firefox can't install sites as apps. Open Charted in Chrome, Edge or Safari to install it.";
+  if (/iPhone|iPad/.test(ua)) return "In Safari, tap Share, then Add to Home Screen.";
+  if (/Chrome\//.test(ua)) return "In Chrome, click the install icon in the address bar, or ⋮ › Cast, save and share › Install page as app.";
+  if (/Safari\//.test(ua)) return "In Safari, choose File › Add to Dock.";
+  return "Use your browser's menu to install this site as an app.";
+}
+function installRow() {
+  if (!window.PERL_ACCOUNT || runningInstalled()) return "";
+  return `<li class="install-row"><div class="what"><span class="t">Install Charted on this computer</span><small>Its own window in your Dock or taskbar, and it opens offline.</small>${installPrompt ? "" : `<small class="install-how">${esc(installSteps())}</small>`}</div><div class="tail">${installPrompt ? `<button class="btn small primary" data-act="install">Install</button>` : ""}</div></li>`;
+}
+async function runInstall() {
+  const p = installPrompt; if (!p) { toast(installSteps()); return; }
+  installPrompt = null;
+  try { await p.prompt(); const r = await p.userChoice; if (r && r.outcome === "accepted") ui.installed = true; else toast("Not installed. You can install Charted later from here."); } catch { toast(installSteps()); }
+  render(); refocus("#h-acct");
+}
 
 /* ----- account (standalone app only): sign out, Claude consent, delete everything ----- */
 function accountPanel() {
@@ -2108,6 +2197,7 @@ function accountPanel() {
   return `<section class="panel span-2" aria-labelledby="h-acct">
     <div class="panel-head"><h2 id="h-acct">Your account</h2><span class="aside">${esc(A.email())}</span></div>
     <ul class="list two">
+      ${installRow()}
       <li><div class="what"><span class="t">Claude</span><small>${ai ? "Allowed. Cleanup, interview drafts and policy answers send the text involved to Claude, made by Anthropic." : "Off. You review debriefs yourself, and Ask uses keyword search."}</small></div><div class="tail"><button class="btn small" data-act="ai-toggle">${ai ? "Turn off" : "Allow"}</button></div></li>
       <li><div class="what"><span class="t">Sign out</span><small>Your plan and journal stay in your account.</small></div><div class="tail"><button class="btn small" data-act="sign-out">Sign out</button></div></li>
       <li><div class="what"><span class="t">Delete account</span><small>Deletes your sign-in, plan, checklist and every journal entry. This can't be undone.</small></div><div class="tail">${ui.delAcct ? `<button class="btn small" data-act="del-acct-cancel">Keep</button><button class="btn small" style="color:var(--negative);border-color:var(--negative)" data-act="del-acct-yes">Delete everything</button>` : `<button class="btn small" style="color:var(--negative)" data-act="del-acct">Delete account</button>`}</div></li>
@@ -2133,12 +2223,13 @@ window.PERL_APP = Object.freeze({
 function modToday(slot) { return window.PERL_MODULES.filter((m) => (m.todaySlot || "main") === slot).map((m) => { try { return m.today ? m.today() || "" : ""; } catch { return ""; } }).join(""); }
 
 /* ================= router and render ================= */
-const VIEWS = { today: vToday, calendar: vCalendar, rotations: vRotations, progress: vRequirements, policies: vPolicies, health: vFlags, ask: vAsk, profile: vProfile, schedule: vSchedule, setup: vSetup, journal: vNone, history: vNone, vault: vNone, mspe: vNone, dsettings: vNone, boot: vBoot };
+const VIEWS = { offline: vOffline, today: vToday, calendar: vCalendar, rotations: vRotations, progress: vRequirements, policies: vPolicies, health: vFlags, ask: vAsk, profile: vProfile, schedule: vSchedule, setup: vSetup, journal: vNone, history: vNone, vault: vNone, mspe: vNone, dsettings: vNone, boot: vBoot };
 const ALIAS = { path: "today", deadlines: "rotations", requirements: "progress", discrepancies: "health" };
 Object.assign(ui, { view: "today", calMode: "month", calMonth: "", drawer: null, trackFind: "", drop: { status: "idle" } });
 function route() {
   if (!booted) { ui.view = "boot"; render(); return; }
   let h = decodeURIComponent((location.hash || "").replace(/^#/, ""));
+  if (!state.example && ui.unreachable && !state.profile.setupDone) { ui.view = "offline"; ui.sheet = false; ui.meOpen = false; render(); return; }
   if (!state.example && !state.profile.setupDone && h !== "setup") { if (location.hash !== "#setup") { location.hash = "setup"; return; } h = "setup"; }
   if (ALIAS[h]) h = ALIAS[h];
   if (VIEWS[h] || modView(h)) { ui.view = h; if (h === "policies" && !ui.keepSel) ui.sel = null; }
@@ -2147,22 +2238,54 @@ function route() {
   ui.keepSel = false; ui.sheet = false; ui.meOpen = false;
   render(); window.scrollTo(0, 0);
 }
+/* A re-render replaces the control that was just used. Put focus back on its replacement (same id, or same action and data,
+   or same link), or on the page heading, so keyboard and screen-reader users never get dropped back to the top of the page. */
+function focusSig(el) {
+  if (!el || el === document.body || !el.closest || el.closest("#pal, #drawer, .perl-gate")) return null;
+  const zone = el.closest("#side, #sheet, #subnav, #view, #dbf-views"); if (!zone) return null;
+  return { id: el.id || "", tag: el.tagName, href: el.getAttribute("href"), ds: Object.entries(el.dataset || {}), zone: zone.id, cls: el.className, text: (el.textContent || "").trim().slice(0, 60) };
+}
+function sigMatch(x, sig) { return x.tagName === sig.tag && x.getAttribute("href") === sig.href && Object.keys(x.dataset).length === sig.ds.length && sig.ds.every(([k, v]) => x.dataset[k] === v); }
+function shown(el) { return !!el && (el.checkVisibility ? el.checkVisibility() : !!el.offsetParent); }
+function pageHeading() {
+  const dbf = $("#dbf-views"); const v = dbf && !dbf.hidden ? dbf.querySelector(".view:not([hidden]) h1") : null;
+  const h = v || $("#view h1"); if (h && !h.hasAttribute("tabindex")) h.setAttribute("tabindex", "-1"); return h;
+}
+function restoreFocus(sig, noFallback) {
+  if (!sig) return; const a = document.activeElement; if (a && a !== document.body && a.isConnected) return;
+  if (pal.open || ui.drawer) return;
+  let el = sig.id ? document.getElementById(sig.id) : null;
+  if (!shown(el)) {
+    const pool = [...document.querySelectorAll(`#${sig.zone} ${sig.tag}`), ...document.querySelectorAll(sig.tag)].filter((x) => sigMatch(x, sig) && shown(x));
+    el = pool.find((x) => x.className === sig.cls && (x.textContent || "").trim().slice(0, 60) === sig.text) || pool.find((x) => x.className === sig.cls) || pool[0] || null;
+  }
+  if (!el && !noFallback) el = pageHeading();
+  if (el && el.tabIndex < 0 && !el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1"); /* a heading can take focus too */
+  if (el) el.focus({ preventScroll: true });
+}
+document.addEventListener("perl:refocus", (e) => restoreFocus(e.detail));
 function render() {
   const active = document.activeElement; const fid = active && active.id; const selStart = active && "selectionStart" in active ? active.selectionStart : null;
+  const sig = focusSig(active);
   shell();
   document.documentElement.dataset.space = SPACE[ui.view] || "";
   document.documentElement.dataset.boot = ui.view === "boot" || ui.view === "setup" ? "true" : "false";
   const dbfView = DEBRIEF_VIEWS.has(ui.view);
   $("#view").hidden = dbfView; const dh = $("#dbf-views"); if (dh) dh.hidden = !dbfView;
-  $("#view").innerHTML = dbfView ? sandboxNotice() : sandboxNotice() + (VIEWS[ui.view] || modView(ui.view))();
-  if (dbfView && state.example) $("#view").hidden = false;
+  const notes = sandboxNotice() + syncNotice();
+  $("#view").innerHTML = dbfView ? notes : notes + (VIEWS[ui.view] || modView(ui.view))();
+  if (dbfView && notes) $("#view").hidden = false;
   document.dispatchEvent(new CustomEvent("perl:view", { detail: { view: ui.view } }));
   $("#view").dataset.view = ui.view;
+  for (const w of document.querySelectorAll("#view .table-wrap")) { if (w.scrollWidth > w.clientWidth + 1 && !w.hasAttribute("tabindex")) { w.tabIndex = 0; w.setAttribute("role", "region"); w.setAttribute("aria-label", ((w.querySelector("caption") || w.closest("section")?.querySelector("h2") || {}).textContent?.trim() || "Table") + " (scrolls sideways)"); } }
   if (ui.view === "progress" || (ui.view === "calendar" && ui.calMode === "timeline")) drawClock($("#clock"));
   renderDrawer();
   if (fid && !(pal.open && fid === "pal-q")) { const el = document.getElementById(fid); if (el && el !== document.body && !el.closest("#pal")) { el.focus({ preventScroll: true }); if (selStart !== null && "setSelectionRange" in el) { try { el.setSelectionRange(selStart, selStart); } catch { /* not a text input */ } } } }
+  restoreFocus(sig);
 }
-function refocus(sel) { setTimeout(() => document.querySelector(sel)?.focus({ preventScroll: true }), 0); }
+/* jump to a section of the page: scroll to it and move focus there, so the keyboard lands where the eyes do */
+function focusSection(id) { const el = document.getElementById(id); if (!el) return; if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1"); el.scrollIntoView({ block: "start" }); el.focus({ preventScroll: true }); }
+function refocus(sel) { setTimeout(() => { const el = document.querySelector(sel); if (!el) return; if (el.tabIndex < 0 && !el.hasAttribute("tabindex") && !el.disabled) el.setAttribute("tabindex", "-1"); el.focus({ preventScroll: true }); }, 0); }
 function shiftMonth(n) {
   const t = today(); const m = parseD(ui.calMonth) || new Date(t.getFullYear(), t.getMonth(), 1);
   const x = new Date(m.getFullYear(), m.getMonth() + n, 1); ui.calMonth = isoD(x).slice(0, 7); render();
@@ -2200,11 +2323,12 @@ document.addEventListener("click", (ev) => {
     case "drop-reset": ui.drop = { status: "idle" }; render(); break;
     case "drop-me": { const p = ui.drop && ui.drop.people && ui.drop.people[+t.dataset.i]; if (p) { ui.drop = { ...ui.drop, status: "review", person: { name: p.name, days: p.days }, people: null, names: [] }; render(); } break; }
     case "drop-add": addDroppedSchedule(); break;
-    case "sched-del": { const sc = (state.scheds || []).find((x) => x.id === t.dataset.id); state.scheds = (state.scheds || []).filter((x) => x.id !== t.dataset.id); persist(); render(); if (sc) toast(`${rotShort(sc.name)} schedule removed.`); break; }
-    case "go-drop": ev.preventDefault(); go("schedule"); setTimeout(() => document.getElementById("drop-sched")?.scrollIntoView({ block: "start" }), 60); break;
-    case "go-track": ev.preventDefault(); go("schedule"); setTimeout(() => document.getElementById("track")?.scrollIntoView({ block: "start" }), 60); break;
+    case "sched-del": { const sc = (state.scheds || []).find((x) => x.id === t.dataset.id); if (sc) removeWithUndo("scheds", sc.id, `the ${rotShort(sc.name)} schedule`); break; }
+    case "go-drop": ev.preventDefault(); go("schedule"); setTimeout(() => focusSection("drop-sched"), 60); break;
+    case "go-track": ev.preventDefault(); go("schedule"); setTimeout(() => focusSection("track"), 60); break;
     case "theme-toggle": setMode(themeNow() === "dark" ? "light" : "dark"); if (ui.view === "profile") render(); refocus('.me.open [data-act="theme-toggle"]'); break;
     case "theme": setTheme(t.dataset.v); render(); refocus(`[data-act="theme"][data-v="${t.dataset.v}"]`); break;
+    case "single-keys": { try { localStorage.setItem(KEYS_KEY, t.checked ? "on" : "off"); } catch { /* storage unavailable */ } toast(t.checked ? "Single-key shortcuts on." : "Single-key shortcuts off."); break; }
     case "palette-close": closePalette(); break;
     case "pal-run": palRun(Number(t.dataset.i)); break;
     case "set-phase": state.profile.phase = t.dataset.phase; persist(); render(); refocus(`[data-act="set-phase"][data-phase="${t.dataset.phase}"]`); break;
@@ -2216,7 +2340,7 @@ document.addEventListener("click", (ev) => {
       clearTimeout(ui.doneTimer); ui.doneTimer = setTimeout(() => { render(); refocus(`[data-act="tile"][data-id="${id}"]`); }, 450); break;
     }
     case "pt-cell": ui.phaseF = t.dataset.phase; ui.groupF = t.dataset.group; ui.sel = null; render(); document.querySelector(".toolbar")?.scrollIntoView({ block: "start" }); break;
-    case "del-rot": { const r = rotById(t.dataset.id); state.rotations = state.rotations.filter((x) => x.id !== t.dataset.id); becomeMine(); persist(); if (ui.drawer && ui.drawer.type === "rot" && ui.drawer.id === t.dataset.id) closeDrawer(); render(); if (r) toast(`Removed ${r.name}`); break; }
+    case "del-rot": { if (ui.drawer && ui.drawer.type === "rot" && ui.drawer.id === t.dataset.id) closeDrawer(); removeWithUndo("rotations", t.dataset.id); break; }
     case "go": location.hash = t.dataset.to; break;
     case "sel-policy": ui.sel = t.dataset.code; render(); if (window.innerWidth <= 900) window.scrollTo(0, 0); break;
     case "unsel": ui.sel = null; render(); break;
@@ -2228,13 +2352,18 @@ document.addEventListener("click", (ev) => {
     case "apply-audit": applyAudit(); break;
     case "add-elective": ui.addElective = true; render(); setTimeout(() => $("#el-name")?.focus(), 0); break;
     case "cancel-elective": ui.addElective = false; render(); break;
-    case "del-elective": state.electives = state.electives.filter((e) => e.id !== t.dataset.id); becomeMine(); persist(); render(); break;
+    case "del-elective": removeWithUndo("electives", t.dataset.id); break;
     case "use-calc": ui.calc.rule = t.dataset.calc; closeDrawer(); if (location.hash !== "#rotations") location.hash = "rotations"; else render(); setTimeout(() => $("#calc-base")?.focus(), 30); break;
     case "ask-example": ui.ask.draft = t.textContent; if (ui.view !== "ask") location.hash = "ask"; else render(); setTimeout(() => ask(ui.ask.draft), 0); break;
     case "ask-about": ui.ask.draft = `What does ${t.dataset.code} require of me right now, and what deadlines does it set?`; closeDrawer(); location.hash = "ask"; break;
     case "sample-audit": ui.audit.text = SAMPLE_AUDIT; ui.audit.fileName = ""; ui.audit.error = ""; render(); break;
     case "ask-clear": ui.ask.turns = []; render(); break;
     case "setup-next": setupNext(); break;
+    case "sync-retry": if (STORE.hasUnsaved()) STORE.retry().then(() => { if (STORE.problem()) toast("Still can't reach your account. Charted will keep trying."); render(); }); else reloadFromStore(false); break;
+    case "sync-reload": ui.tabConflict = false; if (ui.otherTab) { takeSpace(ui.otherTab.space, ui.otherTab.data); ui.otherTab = null; persist(); render(); toast("Using the other version."); } else reloadFromStore(false); break;
+    case "sync-keep": ui.tabConflict = false; ui.otherTab = null; persist(); render(); toast("Kept this version. It's saved now."); break;
+    case "install": runInstall(); break;
+    case "reauth": if (window.PERL_ACCOUNT && window.PERL_ACCOUNT.reauth) window.PERL_ACCOUNT.reauth(); break;
     case "ai-toggle": if (window.PERL_ACCOUNT) { window.PERL_ACCOUNT.setAiAllowed(!window.PERL_ACCOUNT.aiAllowed()); render(); toast(window.PERL_ACCOUNT.aiAllowed() ? "Claude allowed." : "Claude turned off."); } break;
     case "sign-out": if (window.PERL_ACCOUNT) window.PERL_ACCOUNT.signOut(); break;
     case "del-acct": ui.delAcct = true; render(); refocus('[data-act="del-acct-cancel"]'); break;
@@ -2253,7 +2382,7 @@ document.addEventListener("click", (ev) => {
     case "example-exit": if (mine) { state = mine; mine = null; } ui.ask.turns = []; go(state.profile.setupDone ? "today" : "setup"); break;
     case "recent-clear": state.askRecent = []; persist(); render(); break;
     case "me-menu": ui.meOpen = !ui.meOpen; shell(); refocus(ui.meOpen ? "#me-menu a" : '[data-act="me-menu"]'); break;
-    case "go-acct": ev.preventDefault(); go("profile"); setTimeout(() => document.getElementById("h-acct")?.scrollIntoView({ block: "start" }), 60); break;
+    case "go-acct": ev.preventDefault(); go("profile"); setTimeout(() => focusSection("h-acct"), 60); break;
     case "sheet-close": ui.sheet = false; shell(); $("#menu-btn")?.focus(); break;
     case "clear": ui.clearConfirm = true; render(); break;
     case "clear-cancel": ui.clearConfirm = false; render(); break;
@@ -2297,7 +2426,7 @@ document.addEventListener("change", (ev) => {
     const plan = customPlan(auditRots, base).filter((x) => !mineRots.some((m) => m.name === x.name)).map((x) => (x.src === "audit" ? { ...x, id: (state.rotations.find((r) => r.src === "audit" && r.name === x.name && r.start === x.start) || x).id } : x));
     setCustomRotations(plan.concat(mineRots), base); becomeMine(); persist(); render(); refocus("#ct-base"); toast(base ? `Started from Track ${base}. Confirm the dates marked to confirm.` : "Assigned track cleared."); return; }
   if (t.id === "su-file" && t.files && t.files[0]) { setupAuditFile(t.files[0]); return; }
-  if (t.id === "p-track") { if (t.value) applyTrack(t.value); else { state.profile.track = ""; persist(); render(); } return; }
+  if (t.id === "p-track") { if (t.value === "custom") return; if (t.value) applyTrack(t.value); else { state.profile.track = ""; persist(); render(); } return; }
   if (t.id === "sched-file" && t.files && t.files[0]) { const f0 = t.files[0]; const ta = $("#sched-text"); if (ta) ui.sched.text = ta.value; f0.text().then((txt) => { ui.sched.text = txt.slice(0, 200000); ui.sched.fileName = f0.name; ui.sched.items = null; ui.sched.error = ""; render(); }).catch(() => { ui.sched.error = "Couldn't read that file."; render(); }); return; }
   if (t.id === "audit-file" && t.files && t.files[0]) { const ta = $("#audit-text"); if (ta) ui.audit.text = ta.value; readAuditFile(t.files[0]); }
 });
@@ -2325,15 +2454,20 @@ document.addEventListener("submit", (ev) => {
     becomeMine(); persist(); render(); toast(`Added ${name.slice(0, 60)}`);
   }
   if (f.dataset.form === "elective") {
-    const name = $("#el-name").value.trim(); if (!name) return;
+    const name = $("#el-name").value.trim(); if (!name) { toast("Give the elective a name first."); $("#el-name").focus(); return; }
     const weeks = Math.max(0, Number($("#el-weeks").value) || 0); const credits = Math.max(0, Number($("#el-credits").value) || weeks);
     state.electives.push({ id: "e" + Date.now().toString(36), name: name.slice(0, 80), kind: $("#el-kind").value, weeks, credits, status: $("#el-status").value });
     ui.addElective = false; becomeMine(); persist(); render();
   }
 });
 function typing(el) { return el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)); }
+/* single-character shortcuts (N, /, T, arrows on the calendar) can be switched off in Profile (WCAG 2.1.4) */
+const KEYS_KEY = "perl.v1.keys";
+function singleKeysOn() { try { return localStorage.getItem(KEYS_KEY) !== "off"; } catch { return true; } }
+window.PERL_SINGLE_KEYS = singleKeysOn;
 document.addEventListener("keydown", (ev) => {
   if ((ev.metaKey || ev.ctrlKey) && !ev.altKey && ev.key.toLowerCase() === "k") { ev.preventDefault(); if (pal.open) closePalette(); else openPalette(); return; }
+  if (ev.key === "Tab" && !pal.open && !document.querySelector(".perl-gate")) { const top = ui.drawer ? $("#drawer") : ui.sheet ? $("#sheet") : null; if (top && trapTab(ev, top)) return; }
   if (pal.open) {
     if (ev.key === "Escape") { ev.preventDefault(); closePalette(); return; }
     if (ev.key === "ArrowDown" || ev.key === "ArrowUp") { ev.preventDefault(); const n = pal.items.length; if (n) { pal.idx = (pal.idx + (ev.key === "ArrowDown" ? 1 : -1) + n) % n; palRender(); } return; }
@@ -2346,7 +2480,7 @@ document.addEventListener("keydown", (ev) => {
     if (ui.meOpen) { ui.meOpen = false; shell(); $('#side [data-act="me-menu"], #sheet [data-act="me-menu"]')?.focus(); return; }
     if (ui.sheet) { ui.sheet = false; shell(); $("#menu-btn")?.focus(); return; }
   }
-  if (typing(ev.target) || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  if (typing(ev.target) || ev.metaKey || ev.ctrlKey || ev.altKey || !singleKeysOn()) return;
   if (ev.key === "/") { ev.preventDefault(); openPalette(); return; }
   if (ui.view === "calendar" && ui.calMode === "month" && !ui.drawer) {
     if (ev.key === "ArrowLeft" && !ev.target.closest(".mc")) { shiftMonth(-1); }
@@ -2378,12 +2512,47 @@ window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() =
 window.addEventListener("hashchange", route);
 $("#menu-btn").addEventListener("click", () => { ui.sheet = true; shell(); $("#sheet [data-act='sheet-close']")?.focus(); });
 
+/* the store reports: a save failed, saving works again, another tab saved, or this tab and another both have changes */
+function adoptSaved(data) {
+  const fresh = normalize(data); if (state.example) { mine = fresh; return; }
+  state = fresh; sharedChanged();
+}
+function onStore(type, d) {
+  if (type === "error") { if (!ui.syncWarned) { ui.syncWarned = true; toast(d && d.code === "session_expired" ? "Your sign-in expired. Changes are kept in this browser for now." : "Can't reach your account. Changes are kept in this browser for now."); } render(); return; }
+  if (type === "saved") { ui.syncWarned = false; ui.savedNote = STORE.note(); toast("Back online. Your changes are saved to your account."); render(); return; }
+  if (type === "online") { reloadFromStore(true); return; }
+  if (type === "remote" || type === "merge") {
+    takeSpace(d.space, d.data);
+    if (type === "merge") { if (!state.example) STORE.save(state); if (d.conflict) { ui.tabConflict = d.from || "tab"; ui.otherTab = { space: d.space, data: d.theirs }; } else toast(d.from === "account" ? "Saved, and merged with changes made on another device." : "Merged with changes from your other tab."); }
+    else toast("Updated with changes from your other tab.");
+    render(); return;
+  }
+}
+/* replace one saved space (shared or school) of the plan with another copy of it */
+function takeSpace(space, data) {
+  const base = state.example ? (mine || BLANK) : state; const keys = space === "shared" ? STORE.keys.SHARED_KEYS : STORE.keys.SCHOOL_KEYS;
+  const next = { ...base }; for (const k of keys) { if (k in data) next[k] = data[k]; else if (k !== "v") delete next[k]; }
+  adoptSaved(next);
+}
+async function reloadFromStore(quiet) {
+  let saved = null; try { saved = await STORE.load(); } catch { saved = null; }
+  if (saved && saved.unreachable) { if (!quiet) toast("Still can't reach your account. Charted will keep trying."); render(); return; }
+  ui.unreachable = false; ui.tabConflict = false;
+  adoptSaved(saved ? { ...saved.shared, ...saved.school } : null);
+  if (!quiet) toast("Your plan is up to date.");
+  route();
+}
 function seedExample() { if (!state.example || Object.keys(state.done).length) return; const t = today(); for (const x of [...rotationItems(), ...schedItems()]) if (x.date < t) state.done[itemKey(x)] = 1; }
+/* the app puts each page at the top itself; the browser restoring an old scroll offset after a reload would land
+   mid-page once the plan has drawn, with the page's first lines (and any notice) out of view */
+try { if ("scrollRestoration" in history) history.scrollRestoration = "manual"; } catch { /* not allowed here */ }
 async function boot() {
   route();
   await STORE.init();
   let saved = null; try { saved = await STORE.load(); } catch { saved = null; }
+  ui.unreachable = !!(saved && saved.unreachable);
   state = normalize(saved ? { ...saved.shared, ...saved.school } : null);
+  STORE.on(onStore);
   /* feature modules (habits.js, career.js) load after this script; wait for them before the first real route */
   if (document.readyState === "loading") await new Promise((res) => document.addEventListener("DOMContentLoaded", res, { once: true }));
   booted = true; ui.savedNote = saved ? STORE.note() : "";
@@ -2391,6 +2560,15 @@ async function boot() {
   route();
 }
 boot();
+/* a page left open overnight (or across New Year) moves on to the new day by itself, unless you're mid-typing */
+let dayShown = isoD(today());
+function checkDay() {
+  const d = isoD(today()); if (d === dayShown || !booted) return;
+  if (typing(document.activeElement) || pal.open) return;
+  dayShown = d; ui.calMonth = ""; render(); sharedChanged();
+}
+setInterval(checkDay, 30000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkDay(); });
 if (false && "serviceWorker" in navigator && !IN_CLAUDE && (location.protocol === "https:" || location.hostname === "localhost")) navigator.serviceWorker.register("sw.js").catch(() => { /* offline mode unavailable */ });
 document.fonts && document.fonts.ready.then(() => { if ($("#clock")) drawClock($("#clock")); });
 })();

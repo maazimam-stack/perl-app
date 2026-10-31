@@ -1,3 +1,4 @@
+/* SOURCE OF TRUTH. Originally generated once by tools/port_debrief.py from handoff/perl/, then edited by hand; edit this file directly. The port script is retired and refuses to run, so nothing regenerates or overwrites it. */
 /* Debrief space, ported from Perl (Clerkship Debrief v7). Owns the journal, the residency vault, the MSPE draft and
    debrief settings, in its own store at data/users/<uid>/debrief. Reads the shared schedule one way through window.PERL_SHARED.
    Nothing here is exported by School, and School code never reads it. */
@@ -235,8 +236,9 @@ let sharedProfile = {};
 function syncShared(){
   const S = window.PERL_SHARED; if (!S) return;
   const rots = arr(S.rotations()).filter(r => r && str(r.name) && isDayKey(r.start) && isDayKey(r.end)).sort((a, b) => a.start.localeCompare(b.start));
-  const seen = new Set();
-  state.settings.rotations = rots.length ? rots.filter(r => !seen.has(r.name) && seen.add(r.name)).map(r => ({name:r.name, kind:r.kind || "clerkship", start:r.start, end:r.end, weeks:Math.max(1, Math.round((diffDays(parseDay(r.end), parseDay(r.start)) + 1) / 7)), color:CORE_COLOR[r.name] ?? rotColor(r.name)}))
+  /* every rotation is kept, even two with the same name (a repeated elective, a split clerkship): days are matched to a
+     rotation by its id and dates, never by name alone */
+  state.settings.rotations = rots.length ? rots.map((r, i) => ({id:str(r.id) || "rot" + i, name:r.name, kind:r.kind || "clerkship", start:r.start, end:r.end, weeks:Math.max(1, Math.round((diffDays(parseDay(r.end), parseDay(r.start)) + 1) / 7)), color:CORE_COLOR[r.name] ?? rotColor(r.name)}))
     : CORE.map(n => ({name:n, kind:"clerkship", start:"", end:"", weeks:5, color:CORE_COLOR[n]}));
   if (!state.settings.rotations.some(r => r.name === state.settings.current)) state.settings.current = (state.settings.rotations[0] || {}).name || "Clerkship";
   const scheds = arr(S.scheds());
@@ -260,7 +262,9 @@ function rotationOn(k){
 function currentRotation(){ const r = rotationOn(todayKey()); return r ? r.name : state.settings.current; }
 function rotColor(name){ if (CORE_COLOR[name] != null) return CORE_COLOR[name]; const r = state.settings.rotations.find(x => x.name === name); if (r && r.color != null) return r.color; let hh = 0; for (const c of String(name)) hh = (hh * 31 + c.charCodeAt(0)) | 0; return Math.abs(hh) % 8; }
 const cc = name => "c" + rotColor(name);
-function allRotations(){ const list = state.settings.rotations.map(r => r.name); for (const e of state.entries) if (e.rotation && !list.includes(e.rotation)) list.push(e.rotation); return list; }
+function allRotations(){ const list = [...new Set(state.settings.rotations.map(r => r.name))]; for (const e of state.entries) if (e.rotation && !list.includes(e.rotation)) list.push(e.rotation); return list; }
+/* the entries logged on one rotation: by name, and when two rotations share the name, by the dates too */
+function entriesFor(r){ const twin = state.settings.rotations.filter(x => x.name === r.name).length > 1; return state.entries.filter(e => e.rotation === r.name && (!twin || !r.s || (entryDay(e) >= dayKey(r.s) && entryDay(e) <= dayKey(r.e)))); }
 function buildSchedule(){ toGo("schedule"); } /* dates come from the shared Schedule page */
 function buildScheduleUnused(anchor, startKey){
   const rs = state.settings.rotations; const i = rs.findIndex(r => r.name === anchor); if (i < 0 || !isDayKey(startKey)) return;
@@ -275,7 +279,16 @@ const debriefDoc = () => db.doc("data/users/" + uid + "/debrief");
 const entriesCol = () => debriefDoc().collection("entries");
 const settingsDoc = () => debriefDoc().collection("meta").doc("settings");
 const localEntries = () => arr(lsGet(K.entries));
-const sortEntries = list => list.sort((a, b) => entryDay(b).localeCompare(entryDay(a)) || (b.createdAt || "").localeCompare(a.createdAt || ""));
+/* entries saved by older versions (or edited elsewhere) may miss fields; read them into today's shape so nothing renders "undefined" */
+function normEntry(e){
+  if (!e || typeof e !== "object" || !str(e.id)) return null;
+  const o = Object.assign({}, e);
+  o.text = str(o.text); o.title = str(o.title) || firstWords(o.text); o.rotation = str(o.rotation) || "Clerkship"; o.oneLiner = str(o.oneLiner);
+  for (const k of ["did", "learned", "people", "competencies", "epas", "themes", "phiLeft"]) o[k] = arr(o[k]);
+  o.feedback = arr(o.feedback).filter(f => f && typeof f === "object").map(f => Object.assign({}, f, {said:str(f.said || f.text || f.quote), from:str(f.from), tone:f.tone === "constructive" ? "constructive" : "positive"})).filter(f => f.said);
+  return o;
+}
+const sortEntries = list => arr(list).map(normEntry).filter(Boolean).sort((a, b) => entryDay(b).localeCompare(entryDay(a)) || (b.createdAt || "").localeCompare(a.createdAt || ""));
 async function initStore(){
   let dbNs = null, userNs = null;
   if (window.claude && typeof window.claude.use === "function"){
@@ -285,10 +298,13 @@ async function initStore(){
   if (dbNs && userNs){ try { id = await userNs.id(); } catch {} }
   if (dbNs && id){
     db = dbNs; uid = id; state.mode = "account";
-    unsubE = entriesCol().orderBy("createdAt", "desc").limit(1000).onSnapshot(snap => {
-      state.entries = sortEntries(snap.docs.map(d => Object.assign(clone(d.data() || {}), {id:d.id})));
-      state.loaded = true; renderAll(true);
-    }, () => { toBrowserMode("Lost the connection to your account. Showing entries saved in this browser."); });
+    unsubE = entriesCol().orderBy("createdAt", "desc").limit(20000).onSnapshot(snap => {
+      state.entries = sortEntries(withOutbox(snap.docs.map(d => Object.assign(clone(d.data() || {}), {id:d.id}))));
+      state.loaded = true; state.offline = false; renderAll(true); flushOutbox();
+    }, (err) => {
+      if (err && (err.code === "unavailable" || err.code === "session_expired")){ state.loaded = true; state.entries = sortEntries(withOutbox(state.entries)); state.offline = true; renderAll(); return; } /* the page-wide notice says so; the journal says what it means for the list */
+      toBrowserMode("Lost the connection to your account. Showing entries saved in this browser.");
+    });
     unsubM = mspeDoc().onSnapshot(s => { if (s.exists && !mspeDirty){ state.mspe = normMspe(s.data()); if (state.view === "mspe") renderMspe(true); else if (state.view === "vault") renderVault(); } }, () => {});
     unsubS = settingsDoc().onSnapshot(s => { if (s.exists){ state.settings = normSettings(s.data()); syncShared(); renderAll(true); } }, () => {});
   } else toBrowserMode();
@@ -304,17 +320,35 @@ function toBrowserMode(msg){
   renderAll();
 }
 function localUpsert(e){ const list = localEntries().filter(x => x.id !== e.id); list.push(e); lsSet(K.entries, sortEntries(list)); if (state.mode !== "account") state.entries = sortEntries(localEntries()); }
+/* entries that couldn't reach the account (offline, server down, sign-in expired) wait here, on this device, and are sent
+   when the connection or the sign-in comes back. They show in the journal meanwhile. */
+const K_OUTBOX = "perl.v1.debrief.outbox";
+const outbox = () => arr(lsGet(K_OUTBOX));
+function toOutbox(body){ lsSet(K_OUTBOX, outbox().filter(x => x.id !== body.id).concat([body])); state.entries = sortEntries(state.entries.filter(x => x.id !== body.id).concat([body])); renderAll(); }
+const withOutbox = list => { const ids = new Set(list.map(x => x.id)); return list.concat(outbox().filter(x => !ids.has(x.id))); };
+let flushingOutbox = false;
+async function flushOutbox(){
+  if (flushingOutbox || state.mode !== "account" || !db || !outbox().length) return;
+  flushingOutbox = true; let sent = 0;
+  try { for (const body of outbox()){ try { await entriesCol().doc(body.id).set(body); lsSet(K_OUTBOX, outbox().filter(x => x.id !== body.id)); sent++; } catch { break; } } }
+  finally { flushingOutbox = false; }
+  if (sent) toast(sent === 1 ? "Your saved-offline entry is now in your account." : sent + " saved-offline entries are now in your account.");
+}
+window.addEventListener("online", () => flushOutbox());
+document.addEventListener("perl:reauthed", () => flushOutbox());
+setInterval(() => { if (outbox().length) flushOutbox(); }, 30000);
 async function putEntry(e){
   const body = clone(e); delete body.phiOk;
   if (state.mode === "account" && db){
     for (let attempt = 0; attempt < 2; attempt++){
-      try { await entriesCol().doc(body.id).set(body); return true; }
+      try { await entriesCol().doc(body.id).set(body); lsSet(K_OUTBOX, outbox().filter(x => x.id !== body.id)); return true; }
       catch (err){
         const c = err && err.code;
         if (c === "unavailable" && attempt === 0){ await sleep(400 + Math.random() * 600); continue; }
         if (c === "quota_exceeded"){ toast("Your journal storage is full. Delete a few entries, then save again."); return false; }
+        if (c === "session_expired"){ toOutbox(body); toast("Your sign-in expired, so this entry is saved on this device. It goes to your account when you sign in again."); return true; }
         if (c === "invalid_argument" || c === "revoked" || c === "not_granted"){ localUpsert(body); toBrowserMode("This view can't write to your account, so the entry was saved in this browser."); return true; }
-        toast("Couldn't save. Check your connection and try again."); return false;
+        toOutbox(body); toast("You're offline, so this entry is saved on this device. It goes to your account when you're back online."); return true;
       }
     }
   }
@@ -355,7 +389,9 @@ function aiError(e){
   if (c === "cancelled") return null;
   if (AI_OFF.has(c)){ state.ai = false; renderAll(); return "Claude is off for this page. You can still review and save notes yourself."; }
   if (c === "rate_limited") return "Too many requests right now. Try again in a minute.";
-  if (c === "session_expired") return "Sign in to Claude again, then retry.";
+  if (c === "timeout") return "Claude took too long. Try again, or review it yourself.";
+  if (c === "session_expired") return window.PERL_ACCOUNT ? "Your sign-in expired. Sign in again, then retry. Your text is kept." : "Sign in to Claude again, then retry.";
+  if (c === "bad_reply") return "Claude's reply came back broken. Try again, or review it yourself.";
   if (c === "refused") return "Claude wouldn't process this text. Edit it and try again, or review it yourself.";
   if (c === "prompt_too_large") return "This is too long for one pass. Split it into two entries.";
   if (c === "invalid_json") return "The cleanup came back garbled. Try again.";
@@ -372,10 +408,10 @@ function quickClean(text){
 
 /* ---------- overlays ---------- */
 const openStack = [];
-let lastFocus = null;
+let lastFocus = null, lastFocusKey = null;
 function showOverlay(id){
   const el = document.getElementById(id); if (!el.hidden) return;
-  if (!openStack.length) lastFocus = document.activeElement;
+  if (!openStack.length){ lastFocus = document.activeElement; lastFocusKey = focusKey(lastFocus) || (lastFocus && lastFocus.closest && lastFocus.closest("#side, #sheet, #subnav, #view") ? {id:lastFocus.id, tag:lastFocus.tagName, cls:lastFocus.className, label:lastFocus.getAttribute("aria-label") || "", text:(lastFocus.textContent || "").trim().slice(0, 60)} : null); }
   el.hidden = false; openStack.push(id); document.body.classList.add("locked");
 }
 function closeOverlay(id){
@@ -384,7 +420,7 @@ function closeOverlay(id){
   if (id === "entry"){ state.drawer = {id:null, edit:null, confirmDel:false}; drawerEditor = null; }
   if (id === "composer" && state.compose.step === "done") state.compose.step = "write";
   if (id === "importer") state.imp = null;
-  if (!openStack.length){ document.body.classList.remove("locked"); if (lastFocus && lastFocus.focus && document.contains(lastFocus)) lastFocus.focus(); }
+  if (!openStack.length){ document.body.classList.remove("locked"); if (lastFocus && lastFocus.focus && document.contains(lastFocus)) lastFocus.focus(); else refocusKey(lastFocusKey); }
 }
 document.addEventListener("click", e => {
   const c = e.target.closest("[data-close]"); if (c) { closeOverlay(c.dataset.close); return; }
@@ -446,6 +482,8 @@ function renderComposer(){
   $("#composeTitle").textContent = done ? "Saved" : review ? (state.compose.review.aiTagged ? "Review what Claude pulled out" : "Review and tag") : "New debrief";
   $("#composeWrite").hidden = !!review || done; $("#composeReview").hidden = !review; $("#composeDone").hidden = !done; $("#composeMeta").hidden = done;
   renderComposeMeta(); renderStarters(); renderEnergy(); renderPhi(); renderComposeFoot();
+  /* a step change replaces the control that was just used; keep the reader inside the sheet */
+  if (!$("#composer").hidden && (document.activeElement === document.body || !document.contains(document.activeElement))) $("#composeTitle").focus();
   if (done) renderDone();
   if (review){ const box = $("#composeReview"); box.textContent = ""; composeEditor = editorEl(state.compose.review); box.append(composeEditor.el); box.scrollTop = 0; }
   else composeEditor = null;
@@ -519,15 +557,17 @@ function renderEnergy(){
   box.append(energySlider(() => state.energy, v => { state.energy = v; saveDraft(); }, "energyRange"));
 }
 function holdButton(label, onDone, before){
-  const b = h("button", {type:"button", class:"hold", "aria-label":label + ". Press and hold to confirm."}, h("span", {class:"fill"}), icon("check", "sm"), h("span", {text:label}));
+  const b = h("button", {type:"button", class:"hold", "aria-label":label}, h("span", {class:"fill"}), icon("check", "sm"), h("span", {text:label}));
   let timer = null, busy = false;
   const finish = async () => { clearTimeout(timer); if (busy) return; busy = true; b.classList.remove("on"); b.classList.add("done"); const ok = await onDone(); if (ok === false){ busy = false; b.classList.remove("done"); } };
   const start = e => { if (busy || b.classList.contains("on")) return; if (e && e.cancelable) e.preventDefault(); if (before && !before()) return; if (reduced){ finish(); return; } b.classList.add("on"); timer = setTimeout(finish, 650); };
   const stop = () => { if (busy) return; clearTimeout(timer); b.classList.remove("on"); };
   b.addEventListener("pointerdown", start); b.addEventListener("pointerup", stop); b.addEventListener("pointerleave", stop); b.addEventListener("pointercancel", stop);
-  b.addEventListener("keydown", e => { if ((e.key === " " || e.key === "Enter") && !e.repeat){ e.preventDefault(); start(); } });
-  b.addEventListener("keyup", e => { if (e.key === " " || e.key === "Enter") stop(); });
-  b.addEventListener("click", e => e.preventDefault());
+  /* pointer users press and hold; a key press, or a click synthesised by assistive technology (no pointer), confirms at once */
+  let pointerHeld = false;
+  b.addEventListener("pointerdown", () => { pointerHeld = true; }); b.addEventListener("pointerup", () => { setTimeout(() => { pointerHeld = false; }, 50); });
+  b.addEventListener("keydown", e => { if ((e.key === " " || e.key === "Enter") && !e.repeat){ e.preventDefault(); if (before && !before()) return; finish(); } });
+  b.addEventListener("click", e => { e.preventDefault(); if (!pointerHeld && e.detail === 0 && !busy){ if (before && !before()) return; finish(); } });
   return b;
 }
 const storeNote = () => state.mode === "account" ? "Saves privately to your account" : state.mode === "browser" ? "Saves in this browser only" : "Connecting…";
@@ -543,7 +583,7 @@ function renderComposeFoot(){
     f.append(h("button", {type:"button", class:"btn ghost", onclick:() => { state.compose.step = "write"; renderComposer(); }}, icon("arrowL", "sm"), "Back to draft"),
       h("span", {class:"grow"}),
       h("button", {type:"button", class:"btn ghost", text:"Discard", onclick:() => { state.compose.review = null; state.compose.step = "write"; renderComposer(); }}),
-      h("span", {class:"holdhint", text:reduced ? "" : "Press and hold"}),
+      h("span", {class:"holdhint", "aria-hidden":"true", text:reduced ? "" : "Press and hold"}),
       holdButton("Save entry", () => saveReview(true), () => !!(composeEditor && composeEditor.check())));
     return;
   }
@@ -621,7 +661,7 @@ async function runCleanup(){
   } catch (e){ const m = aiError(e); if (m) toast(m); }
   finally { state.busy = null; renderComposer(); }
 }
-function reviewManually(){ const text = prepText(); if (!text) return; state.compose.review = baseEntry(quickClean(text)); state.compose.step = "review"; renderComposer(); }
+function reviewManually(){ const text = prepText(); if (!text) return; state.compose.review = baseEntry(quickClean(text)); state.compose.step = "review"; renderComposer(); $("#composeTitle").focus(); }
 async function saveReview(checked){
   if (!composeEditor || (!checked && !composeEditor.check())) return false;
   const d = state.compose.review; const ok = await putEntry(d); if (!ok) return false;
@@ -731,7 +771,7 @@ function editorEl(d){
   }};
 }
 function starEl(s){ return h("div", {class:"star"}, [["Situation", s.situation], ["Task", s.task], ["Action", s.action], ["Result", s.result], ["Reflection", s.reflection]].filter(r => r[1]).map(([k, v]) => h("div", null, h("span", {class:"k", text:k}), h("span", {text:v})))); }
-function dots(n){ return h("span", {class:"dots", title:"Story strength " + n + " of 3"}, "●".repeat(n), h("span", {class:"off", text:"●".repeat(3 - n)})); }
+function dots(n){ return h("span", {class:"dots", role:"img", "aria-label":"Story strength " + n + " of 3", title:"Story strength " + n + " of 3"}, "●".repeat(n), h("span", {class:"off", "aria-hidden":"true", text:"●".repeat(3 - n)})); }
 
 /* ---------- entry drawer ---------- */
 let drawerEditor = null;
@@ -1181,7 +1221,7 @@ function renderMspe(passive){
       h("div", {class:"it"}, h("b", null, String(rd.tracked), h("small", {text:"/ " + rd.total})), h("span", {text:"Clerkships tracked"})),
       h("div", {class:"it"}, h("b", null, String(rd.hl), h("small", {text:"/ 3"})), h("span", {text:"Summary highlights"}))),
     h("div", {class:"prog gold"}, h("i", {style:"width:" + Math.round(rd.pct * 100) + "%"})))));
-  host.append(h("div", {class:"seg wide", role:"tablist", "aria-label":"MSPE sections", style:"margin-bottom:16px"}, MSPE_TABS.map(([k, l]) => h("button", {type:"button", role:"tab", "aria-selected":String(tab === k), "aria-pressed":String(tab === k), text:l, onclick:() => { state.mspeTab = k; renderMspe(); }}))));
+  host.append(h("div", {class:"seg wide", role:"group", "aria-label":"MSPE sections", style:"margin-bottom:16px"}, MSPE_TABS.map(([k, l]) => h("button", {type:"button", "aria-pressed":String(tab === k), text:l, onclick:() => { state.mspeTab = k; renderMspe(); }}))));
   if (tab === "noteworthy") host.append(mspeNoteworthy());
   else if (tab === "activities") host.append(mspeActivities());
   else if (tab === "clerkships") host.append(mspeClerkships());
@@ -1355,7 +1395,7 @@ async function importCV(){
 }
 
 /* clerkships */
-function mspeRots(){ const core = state.settings.rotations.filter(r => r.kind === "clerkship" || CORE.includes(r.name)); return core.length ? core : CORE.map(n => ({name:n})); }
+function mspeRots(){ const seen = new Set(); const core = state.settings.rotations.filter(r => (r.kind === "clerkship" || CORE.includes(r.name)) && !seen.has(r.name) && seen.add(r.name)); return core.length ? core : CORE.map(n => ({name:n})); }
 function rotRange(name){ const r = schedule().find(x => x.name === name && x.s); return r ? r.s.toLocaleDateString(undefined, {month:"long", year:"numeric"}) + " – " + r.e.toLocaleDateString(undefined, {month:"long", year:"numeric"}) : ""; }
 function mspeClerkships(){
   const m = state.mspe, wrap = h("div", {class:"clk"});
@@ -1474,11 +1514,11 @@ function renderShell(){
   const tb = $("#tabbar"); tb.textContent = "";
   for (const [v, label, ic] of VIEWS.slice(0, 4)) tb.append(h("button", {type:"button", "aria-current":state.view === v ? "page" : null, onclick:() => go(v)}, icon(ic), v === "vault" ? "Vault" : label));
   const rl = $("#sideRots"); rl.textContent = "";
-  const cur = currentRotation(), sched = schedule();
+  const cur = currentRotation(), sched = schedule(), curR = rotationOn(todayKey());
   for (const r of sched){
-    const n = state.entries.filter(e => e.rotation === r.name).length;
+    const n = entriesFor(r).length, isNow = curR ? curR.id === r.id : r.name === cur;
     rl.append(h("li", null, h("button", {type:"button", class:cc(r.name), title:r.s ? fmt(dayKey(r.s)) + " – " + fmt(dayKey(r.e)) : r.name, onclick:() => { state.filter = {q:"", rot:r.name, comp:"all"}; go("journal"); }},
-      h("span", {class:"dot"}), h("span", {class:"nm", text:r.name}), r.name === cur ? h("span", {class:"now", text:"now"}) : n ? h("span", {class:"cnt", text:String(n)}) : null)));
+      h("span", {class:"dot"}), h("span", {class:"nm", text:r.name}), isNow ? h("span", {class:"now", text:"now"}) : n ? h("span", {class:"cnt", text:String(n)}) : null)));
   }
   const f = $("#sideFoot"); f.textContent = "";
   f.append(themeSeg(), h("span", {class:"status" + (state.mode === "browser" ? " local" : "")}, h("i"), storeNote()));
@@ -1499,7 +1539,7 @@ function renderToday(soft){
     h("p", {class:"lead", text:draftWords ? "Your draft is waiting: “" + firstWords(pad.value, 12) + "”" : "Two minutes is enough. Talk it out and Claude tidies it after. Private to you."}));
   hero.append(h("div", {class:"hero-act"},
     h("button", {type:"button", class:"micbtn", "aria-label":draftWords ? "Continue your draft" : "Start a debrief", onclick:() => openComposer()}, icon("mic")),
-    h("div", {class:"hero-lbl"}, h("b", {text:draftWords ? "Continue draft" : today.length ? "Add another" : "Start debrief"}), h("span", null, draftWords ? draftWords + " words saved ·" : null, "or press", h("kbd", {text:"N"})))));
+    h("div", {class:"hero-lbl"}, h("b", {text:draftWords ? "Continue draft" : today.length ? "Add another" : "Start debrief"}), h("span", null, draftWords ? draftWords + " words saved" : null, h("span", {class:"kbd-hint"}, (draftWords ? " · " : "") + "or press", h("kbd", {text:"N"}))))));
   if (today.length) hero.append(h("ul", {class:"mini"}, today.map(e => h("li", null, h("button", {type:"button", class:cc(e.rotation), onclick:() => openEntry(e.id)}, h("span", {class:"dot"}), h("span", {class:"tt", text:e.title}), (e.strength || 0) > 0 ? dots(e.strength) : null, icon("chevR", "sm"))))));
   const strip = thisRotation(cur, sch, true);
   if (strip) hero.append(strip);
@@ -1580,7 +1620,7 @@ function journeyCard(){
   }
   const sch = schedule().filter(r => r.s); const min = sch.reduce((a, r) => r.s < a ? r.s : a, sch[0].s), max = sch.reduce((a, r) => r.e > a ? r.e : a, sch[0].e);
   const total = diffDays(max, min) + 1, pos = d => clamp(diffDays(d, min) / total * 100, 0, 100), now = new Date();
-  const path = h("div", {class:"jpath" + (journeyDrawn ? "" : " draw"), role:"img", "aria-label":"Clerkship path from " + fmt(dayKey(min)) + " to " + fmt(dayKey(max)) + ", " + state.entries.length + " debriefs logged"});
+  const path = h("div", {class:"jpath" + (journeyDrawn ? "" : " draw"), role:"group", "aria-label":"Clerkship path from " + fmt(dayKey(min)) + " to " + fmt(dayKey(max)) + ", " + state.entries.length + " debriefs logged"});
   for (const r of sch){
     const len = diffDays(r.e, r.s) + 1, done = diffDays(now, r.e) > 0, frac = clamp((diffDays(now, r.s) + 1) / len, 0, 1);
     path.append(h("button", {type:"button", class:"jstage " + cc(r.name), style:"left:" + pos(r.s).toFixed(3) + "%;width:" + (len / total * 100).toFixed(3) + "%;background:none;border:0;padding:0;text-align:left", title:r.name + " · " + fmt(dayKey(r.s)) + " – " + fmt(dayKey(r.e)), onclick:() => { state.filter = {q:"", rot:r.name, comp:"all"}; go("journal"); }},
@@ -1625,7 +1665,7 @@ function renderCalendar(){
       const si = schedOn(k), showE = es.slice(0, 2), showS = si.slice(0, 3 - showE.length), more = es.length - showE.length + si.length - showS.length, keyDay = si.some(e => KEY_KINDS.has(e.kind));
       const cell = h("div", {class:"cal-d" + (es.length ? " done" : "") + (d.getMonth() !== m.getMonth() ? " out" : "") + (k === t ? " today" : "") + (k === state.cal.sel ? " sel" : ""), role:"button", tabindex:"0", "aria-label":fmt(k, {weekday:"long", month:"long", day:"numeric"}) + (es.length ? ", debriefed, " + es.length + (es.length === 1 ? " entry" : " entries") : ""), onclick:() => { state.cal.sel = k; renderCalendar(); }, onkeydown:ev => { if (ev.key === "Enter" || ev.key === " "){ ev.preventDefault(); state.cal.sel = k; renderCalendar(); } }},
         h("span", {class:"dn", text:String(d.getDate())}), h("span", {class:"cal-gap"}),
-        showE.map(e => h("button", {type:"button", class:"ep " + cc(e.rotation), onclick:ev => { ev.stopPropagation(); openEntry(e.id); }}, h("span", {class:"dot"}), h("span", {text:e.title}))),
+        showE.map(e => h("span", {class:"ep " + cc(e.rotation), "aria-hidden":"true", onclick:ev => { ev.stopPropagation(); openEntry(e.id); }}, h("span", {class:"dot"}), h("span", {text:e.title}))),
         showS.map(e => h("span", {class:"si k-" + e.kind, title:[e.time, e.title, ...e.details].filter(Boolean).join(" · ")}, e.time ? h("span", {class:"tm", text:fmtMin(startMin(e.time)) || e.time}) : null, h("span", {text:e.title}))),
         deadlinesOn(k).filter(x => !x.holiday).slice(0, 1).map(x => h("span", {class:"si sd st-" + x.status, title:x.label + (x.code ? " · " + x.code : "")}, h("span", {text:x.label}))),
         more > 0 ? h("span", {class:"ep-more", text:"+" + more + " more"}) : null,
@@ -1677,6 +1717,7 @@ function renderJournalList(){
       h("div", {class:"rowacts"}, h("button", {type:"button", class:"btn primary", onclick:() => openComposer()}, icon("plus", "sm"), "Write today's debrief"), h("button", {type:"button", class:"btn", text:"Add 3 example entries", onclick:addExamples}))));
     return;
   }
+  if (state.offline || outbox().length) host.append(h("p", {class:"ksub", role:"status", style:"margin:0 0 10px", text:state.offline ? "Can't reach your account, so recent entries from your other devices may be missing here. New entries are kept on this device and sent when you're back." : outbox().length === 1 ? "One entry is saved on this device and waiting to go to your account." : outbox().length + " entries are saved on this device and waiting to go to your account."}));
   const list = filtered();
   if (!list.length){ host.append(h("div", {class:"empty"}, h("p", {text:"Nothing matches those filters."}), h("button", {type:"button", class:"btn sm", text:"Clear filters", onclick:() => { state.filter = {q:"", rot:"all", comp:"all"}; renderJournal(); }}))); return; }
   const thisWk = dayKey(weekStart(new Date())), lastWk = dayKey(addDays(weekStart(new Date()), -7));
@@ -1743,7 +1784,7 @@ function renderVault(){
       counts[i].map((n, j) => { if (!n) return h("td", {class:"z", title:r + " · " + COMP_NAME[COMP_KEYS[j]] + ": none yet", text:"–"}); const pct = Math.round(18 + 70 * n / max); return h("td", {title:r + " · " + COMP_NAME[COMP_KEYS[j]] + ": " + n, style:"background:color-mix(in srgb,var(--accent) " + pct + "%,var(--surface));color:" + (pct > 55 ? "var(--on-accent)" : "var(--ink)"), text:String(n)}); }),
       h("td", {class:"tot", text:String(es.filter(e => e.rotation === r).length)})))));
   bento.append(h("section", {class:"card s12"}, h("div", {class:"card-h"}, icon("grid", "sm"), h("h2", {text:"Competency coverage"}), h("div", {class:"act"}, es.length && gaps.length ? h("span", {class:"muted", style:"font-size:12.5px", text:"Missing: " + gaps.map(c => COMP_NAME[c]).join(", ")}) : null)),
-    h("div", {class:"card-b"}, h("div", {class:"heat-wrap"}, table))));
+    h("div", {class:"card-b"}, h("div", {class:"heat-wrap", tabindex:"0", role:"region", "aria-label":"Competency heat map"}, table))));
 
   // Signal
   const sig = rots.map(r => { const v = es.filter(e => e.rotation === r && e.energy).map(e => e.energy); return {r, n:v.length, avg:v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0}; }).filter(x => x.n);
@@ -1820,13 +1861,13 @@ function renderToolkit(){
   const dw = h("input", {class:"input", id:"dw", placeholder:"Spell it as (e.g. Dr. Nakamura, SVT)"}), dh = h("input", {class:"input", id:"dh", placeholder:"When I say (optional)"});
   kit.append(section("words", "Dictionary", "Attending names, drugs, eponyms and abbreviations. Add what you say when dictation keeps mangling it; it's swapped before cleanup.",
     s.dictionary.length ? h("ul", {class:"klist"}, s.dictionary.map((d, i) => h("li", null, h("span", {class:"main"}, h("b", {text:d.word}), h("div", {class:"heard", text:d.heard ? "when I say “" + d.heard + "”" : "spelling hint"})), h("button", {type:"button", class:"iconbtn", "aria-label":"Remove " + d.word, onclick:() => { s.dictionary.splice(i, 1); commitSettings(); }}, icon("x", "sm"))))) : null,
-    h("form", {class:"kform", onsubmit:e => { e.preventDefault(); const w = str(dw.value); if (!w) return; s.dictionary.push({word:w, heard:str(dh.value).toLowerCase()}); dw.value = ""; dh.value = ""; commitSettings(); }}, dw, dh, h("button", {type:"submit", class:"btn", text:"Add"}))));
+    h("form", {class:"kform", onsubmit:e => { e.preventDefault(); const w = str(dw.value); if (!w){ toast("Type the word as it should be spelled first."); dw.focus(); return; } s.dictionary.push({word:w, heard:str(dh.value).toLowerCase()}); dw.value = ""; dh.value = ""; commitSettings(); }}, dw, dh, h("button", {type:"submit", class:"btn", text:"Add"}))));
 
   // Snippets
   const st = h("input", {class:"input", id:"st", placeholder:"Trigger phrase (e.g. procedure log)"}), sx = h("textarea", {class:"ta", id:"sx", style:"min-height:90px", placeholder:"What it expands to"});
   kit.append(section("book", "Snippets", "Say the trigger phrase while dictating, or tap it in the composer, and it expands into a template.",
     s.snippets.length ? h("ul", {class:"klist"}, s.snippets.map((sn, i) => h("li", null, h("span", {class:"main"}, h("b", {text:"“" + sn.trigger + "”"}), h("div", {class:"prev", text:sn.text.replace(/\n/g, " · ")})), h("button", {type:"button", class:"iconbtn", "aria-label":"Remove " + sn.trigger, onclick:() => { s.snippets.splice(i, 1); commitSettings(); }}, icon("x", "sm"))))) : null,
-    h("form", {style:"display:grid;gap:8px", onsubmit:e => { e.preventDefault(); const t = str(st.value), x = sx.value; if (!t || !str(x)) return; s.snippets.push({trigger:t.toLowerCase(), text:x}); st.value = ""; sx.value = ""; commitSettings(); }}, st, sx, h("div", null, h("button", {type:"submit", class:"btn", text:"Add snippet"})))));
+    h("form", {style:"display:grid;gap:8px", onsubmit:e => { e.preventDefault(); const t = str(st.value), x = sx.value; if (!t || !str(x)){ toast(!t ? "Give the snippet a trigger word first." : "Type the text the snippet should insert."); (!t ? st : sx).focus(); return; } s.snippets.push({trigger:t.toLowerCase(), text:x}); st.value = ""; sx.value = ""; commitSettings(); }}, st, sx, h("div", null, h("button", {type:"submit", class:"btn", text:"Add snippet"})))));
 
   // Shortcuts
   const mod = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "⌘" : "Ctrl";
@@ -1937,10 +1978,11 @@ document.addEventListener("keydown", e => {
   const mod = e.metaKey || e.ctrlKey;
 
   if (e.key === "Escape" && openStack.length){ e.preventDefault(); closeOverlay(openStack[openStack.length - 1]); return; }
+  if (e.key === "Tab" && openStack.length && window.PERL_TRAP){ const root = document.getElementById(openStack[openStack.length - 1]); if (root && window.PERL_TRAP(e, root)) return; }
   if (mod && e.key === "Enter" && !$("#composer").hidden){ e.preventDefault(); if (state.compose.step === "done") closeOverlay("composer"); else if (state.compose.step === "review") saveReview(); else if (state.busy !== "cleanup"){ if (state.ai === false) reviewManually(); else runCleanup(); } return; }
   const typing = e.target.closest && e.target.closest("input,textarea,select,[contenteditable]");
   if (typing || mod || e.altKey || openStack.length || document.querySelector("#pal[data-open=true]")) return;
-  if (e.key === "n" || e.key === "N"){ e.preventDefault(); openComposer(); }
+  if ((e.key === "n" || e.key === "N") && (!window.PERL_SINGLE_KEYS || window.PERL_SINGLE_KEYS())){ e.preventDefault(); openComposer(); }
 
 });
 
@@ -1975,6 +2017,25 @@ function renderAll(passive){
 document.addEventListener("focusout", () => setTimeout(() => {
   for (const v of Object.keys(pending)){ if (v === state.view && !typingIn($("#view-" + v))){ delete pending[v]; renderView(v); } else if (v !== state.view) delete pending[v]; }
 }, 0));
+
+/* ---------- focus: a re-render replaces the control just used; put focus on its replacement (or the view heading) ---------- */
+function focusKey(el){
+  if (!el || el === document.body || !el.isConnected || !el.closest || !el.closest("#dbf-views, #composer, #entry, #palette, #importer")) return null;
+  return {id:el.id, tag:el.tagName, cls:el.className, label:el.getAttribute("aria-label") || "", text:(el.textContent || "").trim().slice(0, 60)};
+}
+function refocusKey(k){
+  if (!k) return; const a = document.activeElement; if (a && a !== document.body && a.isConnected) return;
+  const vis = x => x && (x.checkVisibility ? x.checkVisibility() : !!x.offsetParent);
+  let el = k.id ? document.getElementById(k.id) : null;
+  if (!vis(el)){ const pool = [...document.querySelectorAll(k.tag)].filter(vis); el = pool.find(x => x.className === k.cls && (x.getAttribute("aria-label") || "") === k.label && (x.textContent || "").trim().slice(0, 60) === k.text) || pool.find(x => x.className === k.cls && (x.getAttribute("aria-label") || "") === k.label) || null; }
+  if (!el){ const open = openStack.length ? document.getElementById(openStack[openStack.length - 1]) : $("#view-" + state.view); el = open && (open.querySelector("h1, h2, [role=dialog], .panel-h button") || open); if (el && !el.hasAttribute("tabindex") && !/^(BUTTON|A|INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) el.setAttribute("tabindex", "-1"); }
+  if (el && el.tabIndex < 0 && !el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+  if (el && el.focus) el.focus({preventScroll:true});
+}
+function keepFocus(fn){ return function(...a){ const k = focusKey(document.activeElement); try { return fn.apply(this, a); } finally { refocusKey(k); } }; }
+renderToday = keepFocus(renderToday); renderCalendar = keepFocus(renderCalendar); renderJournal = keepFocus(renderJournal); renderJournalList = keepFocus(renderJournalList);
+renderVault = keepFocus(renderVault); renderMspe = keepFocus(renderMspe); renderToolkit = keepFocus(renderToolkit); renderDrawer = keepFocus(renderDrawer);
+renderComposer = keepFocus(renderComposer); renderComposeFoot = keepFocus(renderComposeFoot); renderImport = keepFocus(renderImport);
 
 /* ---------- boot ---------- */
 if (typeof draft0.text === "string" && draft0.text){ pad.value = draft0.text; lastLen = draft0.text.length; }

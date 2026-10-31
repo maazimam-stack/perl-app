@@ -1,16 +1,41 @@
 {
-  "name": "Perl",
-  "short_name": "Perl",
+  "name": "Charted",
+  "short_name": "Charted",
   "description": "Clerkship debriefs and CI MED school deadlines, in one private app.",
-  "id": "/",
+  "id": "/perl-app/",
   "start_url": "./#today",
   "scope": "./",
   "display": "standalone",
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
   "background_color": "#0f1112",
   "theme_color": "#0f1112",
+  "categories": [
+    "education",
+    "medical",
+    "productivity"
+  ],
+  "prefer_related_applications": false,
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }
