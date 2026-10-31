@@ -236,32 +236,49 @@ const ICON = {
   dsettings: '<path d="M3 5h7M13 5h2M3 9h2M8 9h7M3 13h9M15 13h0"/><circle cx="11.5" cy="5" r="1.5"/><circle cx="6.5" cy="9" r="1.5"/><circle cx="13.5" cy="13" r="1.5"/>',
   schedule: '<rect x="2.5" y="3.5" width="13" height="12" rx="2.5"/><path d="M2.5 7.5h13M6 10.5h2M10 10.5h2M6 13h2"/>',
   habits: '<circle cx="9" cy="9" r="6.5"/><circle cx="9" cy="9" r="3"/><path d="M9 2.5v3.5M15.5 9H12"/>',
-  career: '<path d="M2.5 15.5l4-5 3 2.5 6-8"/><path d="M11.5 5h4v4"/>'
+  career: '<path d="M2.5 15.5l4-5 3 2.5 6-8"/><path d="M11.5 5h4v4"/>',
+  school: '<path d="M1.5 7L9 3.5 16.5 7 9 10.5z"/><path d="M4.5 8.5v4c1.2 1.3 2.8 2 4.5 2s3.3-.7 4.5-2v-4M16.5 7v4.5"/>',
+  debrief: '<path d="M4.5 2.5h8a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1h-8z"/><path d="M4.5 2.5v13M7.5 6h3.5M7.5 9h3.5"/>'
 };
-const NAV_TOP = [["today", "Today"], ["calendar", "Calendar"]];
-const NAV_DEBRIEF = [["journal", "Journal"], ["history", "History"], ["vault", "Residency vault"], ["mspe", "MSPE"], ["dsettings", "Debrief settings"]];
+/* Six destinations. Each section's other pages are tabs at the top of the page; settings live under your name. */
 const DEBRIEF_VIEWS = new Set(["journal", "history", "vault", "mspe", "dsettings"]);
-const NAV_SCHOOL = [["progress", "Progress"], ["rotations", "Rotations"], ["policies", "Policies"], ["ask", "Ask the policies"], ["health", "Policy health"]];
-const NAV_ME = [["schedule", "Schedule"], ["habits", "Habits"], ["career", "Career"]];
+const SECTIONS = [
+  { k: "today", l: "Today", home: "today", pages: [["today", "Today"]] },
+  { k: "calendar", l: "Calendar", home: "calendar", pages: [["calendar", "Calendar"]] },
+  { k: "debrief", l: "Debrief", home: "journal", sp: "debrief", pages: [["journal", "Journal"], ["history", "History"], ["vault", "Residency vault"], ["mspe", "MSPE"]] },
+  { k: "school", l: "School", home: "progress", sp: "school", pages: [["progress", "Progress"], ["rotations", "Rotations"], ["schedule", "Schedule"], ["policies", "Policies"], ["ask", "Ask the policies"], ["health", "Policy health"]] },
+  { k: "habits", l: "Habits", home: "habits", pages: [["habits", "Habits"]] },
+  { k: "career", l: "Career", home: "career", pages: [["career", "Career"]] }
+];
+const SETTINGS_PAGES = [["profile", "Profile and settings"], ["dsettings", "Debrief settings"]];
 const TITLES = { today: "Today", calendar: "Calendar", rotations: "Rotations", progress: "Progress", policies: "Policies", ask: "Ask the policies", health: "Policy health", profile: "Profile and settings", schedule: "Schedule", setup: "Set up", journal: "Journal", history: "History", vault: "Residency vault", mspe: "MSPE", dsettings: "Debrief settings", boot: "Perl", habits: "Habits", career: "Career" };
-const SPACE = { journal: "debrief", history: "debrief", vault: "debrief", mspe: "debrief", dsettings: "debrief", progress: "school", rotations: "school", policies: "school", ask: "school", health: "school" };
+const SPACE = { journal: "debrief", history: "debrief", vault: "debrief", mspe: "debrief", dsettings: "debrief", progress: "school", rotations: "school", policies: "school", ask: "school", health: "school", schedule: "school" };
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");
 const KBD = IS_MAC ? "⌘K" : "Ctrl K";
 const WDL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHL = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-function navLink([k, l]) {
-  return `<a href="#${k}" ${ui.view === k ? 'aria-current="page"' : ""}><svg viewBox="0 0 18 18" aria-hidden="true">${ICON[k]}</svg><span>${esc(l)}</span></a>`;
+function sectionOf(v) {
+  if (SETTINGS_PAGES.some(([k]) => k === v)) return null;
+  return SECTIONS.find((s) => s.pages.some(([k]) => k === v)) || (getP(v) ? SECTIONS[3] : null);
+}
+function navLink(sec) {
+  const cur = sectionOf(ui.view) === sec;
+  return `<a href="#${sec.home}" class="${sec.sp ? "sp-" + sec.sp : ""}" ${cur ? 'aria-current="page"' : ""}><svg viewBox="0 0 18 18" aria-hidden="true">${ICON[sec.k] || ICON[sec.home]}</svg><span>${esc(sec.l)}</span></a>`;
 }
 function navHtml() {
   return `<button class="side-new" data-act="new" aria-keyshortcuts="N"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M9 3.5v11M3.5 9h11"/></svg><span>New debrief</span><kbd>N</kbd></button>
   <button class="side-search" data-act="palette" aria-keyshortcuts="${IS_MAC ? "Meta+K" : "Control+K"}"><svg viewBox="0 0 18 18" aria-hidden="true">${ICON.search}</svg><span>Search or ask</span><kbd>${KBD}</kbd></button>
-  <nav class="nav" aria-label="Main">${NAV_TOP.map(navLink).join("")}</nav>
-  <div class="nav-label sp-debrief"><i aria-hidden="true"></i>Debrief</div>
-  <nav class="nav sp-debrief" aria-label="Debrief">${NAV_DEBRIEF.map(navLink).join("")}</nav>
-  <div class="nav-label sp-school"><i aria-hidden="true"></i>School</div>
-  <nav class="nav sp-school" aria-label="School">${NAV_SCHOOL.map(navLink).join("")}</nav>
-  <nav class="nav nav-me" aria-label="Your schedule">${NAV_ME.map(navLink).join("")}</nav>`;
+  <nav class="nav" aria-label="Main">${SECTIONS.map(navLink).join("")}</nav>`;
+}
+/* the tabs inside a section: shown only when the section has more than one page */
+function subnavHtml() {
+  if (ui.view === "boot" || ui.view === "setup") return "";
+  const settings = SETTINGS_PAGES.some(([k]) => k === ui.view);
+  const sec = sectionOf(ui.view); const pages = settings ? SETTINGS_PAGES : sec && sec.pages.length > 1 ? sec.pages : null;
+  if (!pages) return "";
+  const cur = getP(ui.view) ? "policies" : ui.view;
+  return `<nav class="subnav${sec && sec.sp ? " sp-" + sec.sp : ""}" aria-label="${esc(settings ? "Settings" : sec.l)} pages"><div class="subnav-in">${pages.map(([k, l]) => `<a href="#${k}" ${cur === k ? 'aria-current="page"' : ""}>${esc(l)}</a>`).join("")}</div></nav>`;
 }
 function initials() {
   const n = (state.profile.name || "").trim();
@@ -271,7 +288,16 @@ function initials() {
 function scopeHtml() {
   const pr = state.profile; const D = profileDates(pr);
   const who = (pr.name || "").trim() || (state.example ? "Example student" : "Your plan");
-  return `<a class="scope" href="#profile" ${ui.view === "profile" ? 'aria-current="page"' : ""}><span class="avatar" aria-hidden="true">${initials()}</span><span class="scope-t"><b>${esc(who)}</b><small>Class of ${D.grad.getFullYear()} · ${esc(phaseLabel(pr.phase))}</small></span></a>`;
+  const on = SETTINGS_PAGES.some(([k]) => k === ui.view);
+  return `<div class="me${ui.meOpen ? " open" : ""}">
+    <button class="scope" data-act="me-menu" aria-expanded="${ui.meOpen ? "true" : "false"}" aria-controls="me-menu" ${on ? 'aria-current="page"' : ""}><span class="avatar" aria-hidden="true">${initials()}</span><span class="scope-t"><b>${esc(who)}</b><small>Class of ${D.grad.getFullYear()} · ${esc(phaseLabel(pr.phase))}</small></span><svg class="me-chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 10l4-4 4 4"/></svg></button>
+    <div class="me-menu" id="me-menu" ${ui.meOpen ? "" : "hidden"}>
+      <a href="#profile" ${ui.view === "profile" ? 'aria-current="page"' : ""}>Profile and settings</a>
+      <a href="#dsettings" ${ui.view === "dsettings" ? 'aria-current="page"' : ""}>Debrief settings</a>
+      ${window.PERL_ACCOUNT ? `<a href="#profile" data-act="go-acct">Account</a>` : ""}
+      ${themeBtn()}
+    </div>
+  </div>`;
 }
 const MARK = `<svg class="mark" width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="var(--teal, #4fb3a5)"/><circle cx="17.56" cy="14.44" r="12.8" fill="var(--debrief, #7d9fe0)"/><circle cx="19.25" cy="12.75" r="10.4" fill="var(--text, #eceeee)"/></svg>`;
 function brandHtml() {
@@ -315,11 +341,12 @@ function themeSeg() {
   return `<div class="seg" role="group" aria-label="Appearance">${[["system", "Match device"], ["light", "Light"], ["dark", "Dark"]].map(([k, l]) => `<button aria-pressed="${cur === k}" data-act="theme" data-v="${k}">${l}</button>`).join("")}</div>`;
 }
 function shell() {
-  $("#side").innerHTML = `${brandHtml()}${navHtml()}<div class="side-foot">${themeBtn()}${scopeHtml()}<p>Unofficial student tool. Policies read Oct 26, 2026; the linked PDFs govern.</p></div>`;
+  $("#side").innerHTML = `${brandHtml()}${navHtml()}<div class="side-foot">${ui.sheet ? "" : scopeHtml()}<p>Unofficial student tool. Policies read Oct 26, 2026; the linked PDFs govern.</p></div>`;
+  const sub = $("#subnav"); if (sub) sub.innerHTML = subnavHtml();
   $("#tb-name").textContent = TITLES[ui.view] || "Policy Navigator";
   const sheet = $("#sheet");
   sheet.dataset.open = ui.sheet ? "true" : "false";
-  sheet.innerHTML = ui.sheet ? `<div class="sheet-top">${brandHtml()}<button class="btn small" data-act="sheet-close">Close</button></div>${navHtml()}<div class="side-foot">${themeBtn()}${scopeHtml()}</div>` : "";
+  sheet.innerHTML = ui.sheet ? `<div class="sheet-top">${brandHtml()}<button class="btn small" data-act="sheet-close">Close</button></div>${navHtml()}<div class="side-foot">${scopeHtml()}</div>` : "";
 }
 
 function exampleNotice() { return ""; } /* the sandbox banner is drawn once, by render() */
@@ -1082,43 +1109,33 @@ function heroFact(cur, nx) {
   if (nx && diffDays(t, nx.date) <= SOON) return `${nx.label}, ${diffDays(t, nx.date) < 0 ? "not yet checked off" : relWhen(nx.date)}.`;
   return `Clear for the next ${SOON} days.`;
 }
+/* the rotation as its weeks: done weeks filled, this week filling, the rest empty */
+function weeksMeter(cur) {
+  const t = today(); const len = diffDays(cur.s, cur.e) + 1; const day = Math.min(len, diffDays(cur.s, t) + 1); const n = Math.max(1, Math.ceil(len / 7));
+  const segs = Array.from({ length: n }, (_, i) => { const f = Math.max(0, Math.min(1, (day - i * 7) / Math.min(7, len - i * 7))); return `<i${f >= 1 ? ' class="full"' : ""}>${f > 0 && f < 1 ? `<b style="width:${(f * 100).toFixed(0)}%"></b>` : ""}</i>`; }).join("");
+  return `<span class="weeks" role="img" aria-label="Day ${day} of ${len}, week ${Math.floor((day - 1) / 7) + 1} of ${n}">${segs}</span>`;
+}
 function heroHtml() {
   const t = today(); const pr = state.profile; const cur = currentRotation(); const nr = nextRotation(); const nx = nextAction(cur);
   const h = new Date().getHours(); const hello = h < 5 ? "Good evening" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
   const name = (pr.name || "").trim().split(/\s+/)[0];
-  const meta = `${hello}${name ? `, ${esc(name)}` : ""} · ${WDL[t.getDay()]}, ${MONTHL[t.getMonth()]} ${t.getDate()} · ${esc(phaseLabel(pr.phase))}${pr.track ? ` · ${esc(trackLabel(pr))}` : ""}`;
+  const meta = `${hello}${name ? `, ${esc(name)}` : ""}. ${WDL[t.getDay()]}, ${MONTHL[t.getMonth()]} ${t.getDate()}<span class="hero-where">${esc(phaseLabel(pr.phase))}${pr.track ? `, ${esc(trackLabel(pr))}` : ""}</span>`;
   const todayEv = schedFor(isoD(t));
   const daySec = todayEv.length ? `<h2 class="label">Today on ${esc(rotShort(todayEv[0].sched))}</h2><ul class="day-list">${todayEv.map(evRow).join("")}</ul>`
-    : cur && (state.scheds || []).some((x) => x.from <= isoD(t) && x.to >= isoD(t)) ? `<h2 class="label">Today</h2><p class="hero-clear">Nothing on your ${esc(rotShort(cur.name))} schedule today.</p>`
-    : cur ? `<p class="hero-hint">Drop in your ${esc(rotShort(cur.name))} schedule and each day shows here. <a class="link" href="#schedule" data-act="go-drop">Add it</a></p>`
+    : cur && (state.scheds || []).some((x) => x.from <= isoD(t) && x.to >= isoD(t)) ? `<p class="hero-hint">Nothing on your ${esc(rotShort(cur.name))} schedule today.</p>`
+    : cur ? `<p class="hero-hint">Add your ${esc(rotShort(cur.name))} schedule to see each day here. <a class="link" href="#schedule" data-act="go-drop">Add schedule</a></p>`
     : !(state.rotations || []).length ? `<p class="hero-hint">Pick your clerkship track and your year fills in. <a class="link" href="#schedule" data-act="go-track">Choose a track</a></p>` : "";
   let rot = "";
   if (cur) {
     const len = diffDays(cur.s, cur.e) + 1; const day = diffDays(cur.s, t) + 1;
-    rot = `<div class="hero-rot"><span class="meter" role="img" aria-label="Day ${day} of ${len}"><span style="width:${((day / len) * 100).toFixed(1)}%"></span></span>
-      <p class="hero-sub num"><button class="link" data-act="open-rot" data-id="${esc(cur.id)}">${esc(cur.name)}</button> · day ${day} of ${len} · ${esc((ROT_KINDS[cur.kind] || "Rotation").toLowerCase())} until ${WD[cur.e.getDay()]}, ${fmtShort(cur.e)}</p></div>`;
-  }
-  const then = nr ? `<p class="hero-then">Then <button class="link" data-act="open-rot" data-id="${esc(nr.id)}">${esc(rotShort(nr.name))}</button> from ${WD[nr.s.getDay()]}, ${fmtShort(nr.s)}.</p>` : "";
-  const next = nx ? `<ul class="rows next-rows">${dateRow(nx)}</ul>` : `<p class="hero-clear">Nothing needs you in the next ${SOON} days.</p>`;
+    rot = `<div class="hero-rot">${weeksMeter(cur)}
+      <p class="hero-sub num"><button class="link" data-act="open-rot" data-id="${esc(cur.id)}">${esc(cur.name)}</button>, day ${day} of ${len}, until ${WD[cur.e.getDay()]}, ${fmtShort(cur.e)}.${nr ? ` Then <button class="link" data-act="open-rot" data-id="${esc(nr.id)}">${esc(rotShort(nr.name))}</button> from ${WD[nr.s.getDay()]}, ${fmtShort(nr.s)}.` : ""}</p></div>`;
+  } else if (nr) rot = `<p class="hero-sub">Next: <button class="link" data-act="open-rot" data-id="${esc(nr.id)}">${esc(rotShort(nr.name))}</button> from ${WD[nr.s.getDay()]}, ${fmtShort(nr.s)}.</p>`;
+  const next = nx ? `<ul class="rows next-rows">${dateRow(nx)}</ul>` : `<p class="hero-hint">Nothing needs you in the next ${SOON} days.</p>`;
   return `<section class="hero" aria-labelledby="h-hero">
-    <div class="hero-main"><p class="hero-meta">${meta}</p><h1 id="h-hero">${esc(heroFact(cur, nx))}</h1>${rot}${then}</div>
-    <div class="hero-next">${daySec}<h2 class="label">Next for you</h2>${next}</div>
-    ${figuresHtml()}
+    <div class="hero-main"><p class="hero-meta">${meta}</p><h1 id="h-hero">${esc(heroFact(cur, nx))}</h1>${rot}</div>
+    <div class="hero-next"><h2 class="label">Next for you</h2>${next}${daySec}</div>
   </section>`;
-}
-function figuresHtml() {
-  const t = today(); const pr = state.profile; const D = profileDates(pr);
-  const soon = allDated().filter((x) => itemState(x) === "soon");
-  const prog = reqProgress(); const inprog = applicableReqs().filter((r) => state.req[r.id] === "inprog").length;
-  const lim = personalItems().find((i) => i.id === (pr.step1 === "passed" ? "step2_deadline" : "step1_limit"));
-  const room = Math.max(0, monthsBetween(D.grad, D.mdLimit));
-  const fig = (href, k, v, c, act) => `<a class="fig-q" href="${href}" ${act || ""}><span class="k">${k}</span><span class="v num">${v}</span><span class="c">${c}</span></a>`;
-  return `<div class="hero-figs">
-    ${fig("#calendar", `Needs you, next ${SOON} days`, soon.length, soon.length ? (() => { const f = soon.sort((a, b) => a.date - b.date)[0]; return `Next: ${esc(f.label)}, ${WD[f.date.getDay()]}`; })() : `Clear for ${SOON} days`)}
-    ${fig("#progress", "Graduation checklist", `${prog.done}<small>of ${prog.total}</small>`, inprog ? `${inprog} in progress` : "Open the checklist")}
-    ${lim ? fig(`#${lim.code}`, pr.step1 === "passed" ? "Step 2 CK deadline" : "Step 1 three-year limit", `${Math.max(0, diffDays(t, lim.date))}<small>days</small>`, `${fmt(lim.date)} · ${esc(lim.code)}`, `data-act="open-policy" data-code="${esc(lim.code)}"`) : ""}
-    ${fig("#progress", "Room before the 6-year limit", `${room}<small>months</small>`, `Limit ${fmtMonth(D.mdLimit)} · APS-33`)}
-  </div>`;
 }
 function agendaGroups() {
   const t = today(); const cur = currentRotation(); const nx = nextAction(cur);
@@ -1129,12 +1146,11 @@ function agendaGroups() {
     ["Later", items.filter((x) => x.date > addDays(t, SOON) && x.date <= addDays(t, 63)).slice(0, 5), "the next five"]
   ].filter(([, xs]) => xs.length);
 }
-function agendaPanel() {
-  const gs = agendaGroups();
-  return `<section class="panel agenda s8" aria-labelledby="h-agenda">
-    <div class="panel-head"><h2 id="h-agenda">Agenda</h2><a class="link" href="#calendar">Open calendar</a></div>
-    ${gs.length ? gs.map(([h, xs, sub]) => `<h3 class="ag-h">${esc(h)}<span class="num">${esc(sub)}</span></h3><ul class="rows">${xs.map((x) => dateRow(x)).join("")}</ul>`).join("") : `<div class="empty">Nothing else dated in the next nine weeks. <a class="link" href="#rotations">Add your rotations</a> to see the deadlines they set off.</div>`}
-    <div class="panel-foot"><a class="link" href="#calendar">Everything else is in the calendar</a><button class="btn small" data-act="export-ics">${CAL_PLUS} Add all to my calendar</button></div>
+function comingUpPanel() {
+  const xs = agendaGroups().flatMap(([, x]) => x).slice(0, 5);
+  return `<section class="panel agenda coming" aria-labelledby="h-agenda">
+    <div class="panel-head"><h2 id="h-agenda">Coming up</h2><a class="link" href="#calendar">Calendar</a></div>
+    ${xs.length ? `<ul class="rows">${xs.map((x) => dateRow(x)).join("")}</ul>` : `<div class="empty">Nothing else dated in the next nine weeks. <a class="link" href="#rotations">Add your rotations</a> to see the deadlines they set off.</div>`}
   </section>`;
 }
 function limitsPanel() {
@@ -1153,7 +1169,7 @@ function limitsPanel() {
 }
 function readFirstPanel() {
   const pr = state.profile; const list = (READ_FIRST[pr.phase] || READ_FIRST.ci).slice(0, 3).map(getP).filter(Boolean);
-  return `<section class="panel grow" aria-labelledby="h-read">
+  return `<section class="panel" aria-labelledby="h-read">
     <div class="panel-head"><h2 id="h-read">Read first in ${esc(phaseLabel(pr.phase))}</h2></div>
     <ul class="facts">${list.map((p) => `<li><button class="fact" data-act="open-policy" data-code="${esc(p.c)}"><span class="what"><span class="t">${esc(p.t)}</span><small>${esc(p.c)}</small></span></button></li>`).join("")}</ul>
     <div class="panel-foot"><a class="link" href="#policies">All policies for your stage</a></div>
@@ -1163,10 +1179,10 @@ function progressPanel() {
   const list = applicableReqs(); const secs = [...new Set(list.map((r) => r.sec))]; const set = state.profile.reqSet || "both";
   const tallies = (set === "both" ? ["6", "6.1"] : [set]).map((k) => electiveTally(k));
   return `<section class="panel s6" aria-labelledby="h-prog">
-    <div class="panel-head"><span class="ph-t"><h2 id="h-prog">Path to the MD</h2><span class="aside num">${reqProgress().done} of ${list.length} done</span></span><a class="link" href="#progress">Open the checklist</a></div>
+    <div class="panel-head"><span class="ph-t"><h2 id="h-prog">Path to the MD</h2><span class="aside num">${reqProgress().done} of ${list.length} done</span></span></div>
     <div class="secs">${secs.map((sec) => {
       const rs = list.filter((r) => r.sec === sec); const done = rs.filter((r) => state.req[r.id] === "done").length;
-      return `<a class="pm-sec" href="#progress"><span class="sec-t"><b>${esc(sec)}</b><span class="num">${done} of ${rs.length}</span></span><span class="segbar" role="img" aria-label="${esc(sec)}: ${done} of ${rs.length} done">${rs.map((r) => `<i class="${esc(state.req[r.id] || "todo")}" title="${esc(SHORT[r.id] || r.label)}: ${STATUS[state.req[r.id] || "todo"][0]}"></i>`).join("")}</span></a>`;
+      return `<div class="pm-sec"><span class="sec-t"><b>${esc(sec)}</b><span class="num">${done} of ${rs.length}</span></span><span class="segbar" role="img" aria-label="${esc(sec)}: ${done} of ${rs.length} done">${rs.map((r) => `<i class="${esc(state.req[r.id] || "todo")}" title="${esc(SHORT[r.id] || r.label)}: ${STATUS[state.req[r.id] || "todo"][0]}"></i>`).join("")}</span></div>`;
     }).join("")}</div>
     <div class="pm-sec mt8"><span class="sec-t"><b>Clinical electives</b><span>${tallies.length > 1 ? "Under each rulebook" : esc(tallies[0].rule.label)}</span></span>${tallies.map((tl) => miniPlan(tl, tallies.length > 1)).join("")}</div>
   </section>`;
@@ -1184,14 +1200,13 @@ function conflictsPanel() {
     <div class="panel-foot"><span class="hint">Until they're fixed, get the answer that applies to you in writing. The linked PDF governs.</span></div>
   </section>`;
 }
+/* Today answers three things first: where you are and what's next, today's habits, and today's debrief. Then what's coming. */
 function vToday() {
   return `<div class="home">
     ${heroHtml()}
-    ${exampleNotice()}
-    ${modToday()}
-    <section class="dbf dbf-today" id="view-today" aria-label="Debrief"></section>
-    <div class="g12 r-main">${agendaPanel()}<div class="col s4">${limitsPanel()}${readFirstPanel()}</div></div>
-    <div class="g12">${progressPanel()}${conflictsPanel()}</div>
+    <div class="today-pair">${modToday("main")}<section class="dbf dbf-today" id="view-today" aria-label="Debrief"></section></div>
+    ${comingUpPanel()}
+    ${modToday("later")}
   </div>`;
 }
 function firstSentence(s) { const m = String(s).match(/^.*?[.!?](\s|$)/); return m ? m[0].trim() : s; }
@@ -1271,6 +1286,7 @@ function vRequirements() {
   const tallies = (set === "both" ? ["6", "6.1"] : [set]).map((k) => electiveTally(k));
   return `${journeyHtml()}
   ${ui.audit.open ? auditPanel() : ""}
+  <div class="g12 overview">${limitsPanel()}${progressPanel()}${readFirstPanel()}${conflictsPanel()}</div>
   <div class="grid">
     <section class="panel span-3" aria-labelledby="h-checklist">
       <div class="panel-head"><h2 id="h-checklist">Graduation checklist</h2><span class="aside">APS-6, APS-6.1, APS-30 and the 2026-27 catalog</span></div>
@@ -2114,7 +2130,7 @@ window.PERL_APP = Object.freeze({
   schedFor: (iso) => schedFor(iso), currentRotation: () => currentRotation(), nextRotation: () => nextRotation(), rotsParsed: () => rotsParsed(),
   pdfText: (buf) => pdfText(buf)
 });
-function modToday() { return window.PERL_MODULES.map((m) => { try { return m.today ? m.today() || "" : ""; } catch { return ""; } }).join(""); }
+function modToday(slot) { return window.PERL_MODULES.filter((m) => (m.todaySlot || "main") === slot).map((m) => { try { return m.today ? m.today() || "" : ""; } catch { return ""; } }).join(""); }
 
 /* ================= router and render ================= */
 const VIEWS = { today: vToday, calendar: vCalendar, rotations: vRotations, progress: vRequirements, policies: vPolicies, health: vFlags, ask: vAsk, profile: vProfile, schedule: vSchedule, setup: vSetup, journal: vNone, history: vNone, vault: vNone, mspe: vNone, dsettings: vNone, boot: vBoot };
@@ -2128,7 +2144,7 @@ function route() {
   if (VIEWS[h] || modView(h)) { ui.view = h; if (h === "policies" && !ui.keepSel) ui.sel = null; }
   else if (getP(h)) { ui.view = "policies"; ui.sel = getP(h).c; }
   else ui.view = "today";
-  ui.keepSel = false; ui.sheet = false;
+  ui.keepSel = false; ui.sheet = false; ui.meOpen = false;
   render(); window.scrollTo(0, 0);
 }
 function render() {
@@ -2154,6 +2170,7 @@ function shiftMonth(n) {
 
 /* ================= events ================= */
 document.addEventListener("click", (ev) => {
+  if (ui.meOpen && !ev.target.closest(".me")) { ui.meOpen = false; shell(); }
   const t = ev.target.closest("[data-act]"); if (!t) return;
   const act = t.dataset.act;
   if (t.tagName === "SELECT" || (t.tagName === "INPUT" && t.type !== "checkbox")) return;
@@ -2186,7 +2203,7 @@ document.addEventListener("click", (ev) => {
     case "sched-del": { const sc = (state.scheds || []).find((x) => x.id === t.dataset.id); state.scheds = (state.scheds || []).filter((x) => x.id !== t.dataset.id); persist(); render(); if (sc) toast(`${rotShort(sc.name)} schedule removed.`); break; }
     case "go-drop": ev.preventDefault(); go("schedule"); setTimeout(() => document.getElementById("drop-sched")?.scrollIntoView({ block: "start" }), 60); break;
     case "go-track": ev.preventDefault(); go("schedule"); setTimeout(() => document.getElementById("track")?.scrollIntoView({ block: "start" }), 60); break;
-    case "theme-toggle": setMode(themeNow() === "dark" ? "light" : "dark"); if (ui.view === "profile") render(); refocus('[data-act="theme-toggle"]'); break;
+    case "theme-toggle": setMode(themeNow() === "dark" ? "light" : "dark"); if (ui.view === "profile") render(); refocus('.me.open [data-act="theme-toggle"]'); break;
     case "theme": setTheme(t.dataset.v); render(); refocus(`[data-act="theme"][data-v="${t.dataset.v}"]`); break;
     case "palette-close": closePalette(); break;
     case "pal-run": palRun(Number(t.dataset.i)); break;
@@ -2235,6 +2252,8 @@ document.addEventListener("click", (ev) => {
     case "example-enter": if (!state.example) { mine = state; state = normalize(clone(EXAMPLE)); seedExample(); } go("today"); break;
     case "example-exit": if (mine) { state = mine; mine = null; } ui.ask.turns = []; go(state.profile.setupDone ? "today" : "setup"); break;
     case "recent-clear": state.askRecent = []; persist(); render(); break;
+    case "me-menu": ui.meOpen = !ui.meOpen; shell(); refocus(ui.meOpen ? "#me-menu a" : '[data-act="me-menu"]'); break;
+    case "go-acct": ev.preventDefault(); go("profile"); setTimeout(() => document.getElementById("h-acct")?.scrollIntoView({ block: "start" }), 60); break;
     case "sheet-close": ui.sheet = false; shell(); $("#menu-btn")?.focus(); break;
     case "clear": ui.clearConfirm = true; render(); break;
     case "clear-cancel": ui.clearConfirm = false; render(); break;
@@ -2324,6 +2343,7 @@ document.addEventListener("keydown", (ev) => {
   }
   if (ev.key === "Escape") {
     if (ui.drawer) { closeDrawer(); return; }
+    if (ui.meOpen) { ui.meOpen = false; shell(); $('#side [data-act="me-menu"], #sheet [data-act="me-menu"]')?.focus(); return; }
     if (ui.sheet) { ui.sheet = false; shell(); $("#menu-btn")?.focus(); return; }
   }
   if (typing(ev.target) || ev.metaKey || ev.ctrlKey || ev.altKey) return;

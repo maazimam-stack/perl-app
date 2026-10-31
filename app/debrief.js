@@ -1486,40 +1486,29 @@ function renderShell(){
 }
 
 /* ---------- today ---------- */
+/* Today keeps one card: today's question and the button that starts it. The rotation facts live on Journal;
+   only an ending rotation's evaluation-and-letter nudge rides along here. */
 function renderToday(soft){
   const host = $("#view-today"); if (!host || (soft && typingIn(host))) return; host.textContent = "";
-  const t = todayKey(), cur = currentRotation(), sch = rotationOn(t), now = new Date();
-  const hr = now.getHours(), greet = hr < 12 ? "Good morning" : hr < 18 ? "Good afternoon" : "Good evening";
-  const meta = h("div", {class:"meta"}, h("span", {class:"pill " + cc(cur)}, h("span", {class:"dot"}), cur));
-  if (sch){
-    const wk = Math.floor(diffDays(now, sch.s) / 7) + 1, left = diffDays(sch.e, now), pct = clamp((diffDays(now, sch.s) + 1) / (sch.weeks * 7) * 100, 0, 100);
-    meta.append(h("span", {text:"Week " + wk + " of " + sch.weeks + " · " + left + (left === 1 ? " day left" : " days left")}), h("span", {class:"minibar " + cc(cur), title:Math.round(pct) + "% through " + cur}, h("i", {style:"width:" + pct.toFixed(1) + "%"})));
-  } else meta.append(h("button", {type:"button", class:"linkbtn", text:"Add rotation dates", onclick:() => { const el = $("#setupDate"); if (el) el.focus(); }}));
-  host.append(h("p", {class:"zone-k"}, h("i"), "Debrief", h("span", {class:"muted", text:"· private to you"})));
-  const bento = h("div", {class:"bento"}); host.append(bento);
-
-  // Hero: today's question
+  const t = todayKey(), cur = currentRotation(), sch = rotationOn(t);
   const draftWords = wordsIn(pad.value), today = entriesOn(t);
   const hero = h("section", {class:"hero " + cc(cur), "aria-labelledby":"heroQ"});
-  if (today.length) hero.append(h("div", {class:"logged"}, h("span", {class:"gk"}, icon("check")), "Logged today", h("span", {class:"muted", text:"· " + today.length + (today.length === 1 ? " entry" : " entries")})));
-  hero.append(h("div", null,
-    h("h1", {class:"hq", id:"heroQ"}, today.length ? "Anything else from " : "What happened on ", h("span", {class:"rot", text:cur}), " today?"),
-    h("p", {class:"lead", text:draftWords ? "Your draft is waiting: “" + firstWords(pad.value, 12) + "”" : "Two minutes is enough. Talk it out with your keyboard's mic and Claude cleans it up after."})));
-  const tsched = schedOn(t);
-  if (tsched.length) hero.append(h("div", {class:"today-sched", "aria-label":"Today's schedule"}, tsched.slice(0, 4).map(e => h("div", {class:"ts k-" + e.kind}, h("span", {class:"tm", text:e.time || "All day"}), h("span", {class:"tt"}, h("b", {style:"font-weight:500", text:e.title}), e.details.length ? h("span", {class:"muted", text:" · " + e.details.slice(0, 2).join(" · ")}) : null)))));
+  hero.append(h("div", {class:"hero-top"},
+    h("h2", {class:"hq", id:"heroQ"}, today.length ? "Anything else from " : "What happened on ", h("span", {class:"rot", text:cur}), " today?"),
+    today.length ? h("p", {class:"logged"}, h("span", {class:"gk"}, icon("check")), today.length === 1 ? "1 entry today" : today.length + " entries today") : null),
+    h("p", {class:"lead", text:draftWords ? "Your draft is waiting: “" + firstWords(pad.value, 12) + "”" : "Two minutes is enough. Talk it out and Claude tidies it after. Private to you."}));
   hero.append(h("div", {class:"hero-act"},
     h("button", {type:"button", class:"micbtn", "aria-label":draftWords ? "Continue your draft" : "Start a debrief", onclick:() => openComposer()}, icon("mic")),
     h("div", {class:"hero-lbl"}, h("b", {text:draftWords ? "Continue draft" : today.length ? "Add another" : "Start debrief"}), h("span", null, draftWords ? draftWords + " words saved ·" : null, "or press", h("kbd", {text:"N"})))));
-  hero.append(h("div", {class:"chiprow"}, STARTERS.map(([lab, txt]) => h("button", {type:"button", class:"chip ghost", text:lab, onclick:() => openComposer({insert:txt})}))));
   if (today.length) hero.append(h("ul", {class:"mini"}, today.map(e => h("li", null, h("button", {type:"button", class:cc(e.rotation), onclick:() => openEntry(e.id)}, h("span", {class:"dot"}), h("span", {class:"tt", text:e.title}), (e.strength || 0) > 0 ? dots(e.strength) : null, icon("chevR", "sm"))))));
-  bento.append(hero);
-  const strip = thisRotation(cur, sch);
-  if (strip) host.append(strip);
+  const strip = thisRotation(cur, sch, true);
+  if (strip) hero.append(strip);
+  host.append(hero);
 }
 /* Three facts for the rotation you're on: the evaluation deadline and who to ask for a letter, the competencies this
    rotation hasn't touched yet, and the next interview question without a story. School supplies the deadline; the
    journal supplies the rest; nothing here is written back to School. */
-function thisRotation(cur, sch){
+function thisRotation(cur, sch, endingOnly){
   if (!cur || !sch) return null;
   const now = new Date(), left = diffDays(sch.e, now), mine = state.entries.filter(e => e.rotation === cur);
   const cards = [];
@@ -1529,11 +1518,14 @@ function thisRotation(cur, sch){
     const evText = ev ? "Evaluations due " + fmt(ev.date, {weekday:"short", month:"short", day:"numeric"}) + (ev.code ? " (" + ev.code + ")" : "") + ". " : "";
     cards.push({k:cur + " ends " + (left <= 0 ? "today" : "in " + left + (left === 1 ? " day" : " days")), t:w ? evText + (w.pos ? w.name + " praised your work " + (w.pos === 1 ? "once" : w.pos + " times") + "; ask about a letter before you leave." : w.name + " saw your work; ask about a letter before you leave.") : evText + "No attending named in your debriefs yet. Name one who saw your work.", fn:() => w ? go("vault") : openComposer({insert:"Attending who saw my work this rotation: "}), warn:!!ev && left <= 7});
   }
+  if (endingOnly){ if (!cards.length) return null; }
+  else {
   const got = new Set(mine.flatMap(e => e.competencies || [])), miss = COMP_KEYS.filter(c => !got.has(c));
   cards.push(mine.length ? {k:"Competencies on " + cur, t:miss.length ? "Not yet: " + miss.map(c => COMP_NAME[c]).join(", ") + "." : "All six covered on this rotation.", fn:() => go("vault")}
     : {k:"Competencies on " + cur, t:"No " + cur + " debriefs yet. Each one fills a row of your clerkship by competency grid.", fn:() => openComposer()});
   const q = PROMPTS.find(p => !storyMatches(p.themes).length);
   if (q) cards.push({k:"Interview story missing", t:"“" + q.q + "”", fn:() => openComposer({insert:"A story for: " + q.q + "\n"})});
+  }
   return h("section", {class:"rot-strip", "aria-label":"This rotation"}, cards.map(c => h("button", {type:"button", class:"rs-card" + (c.warn ? " warn" : ""), onclick:c.fn}, h("span", {class:"rs-k", text:c.k}), h("span", {class:"rs-t", text:c.t}))));
 }
 /* the rest of Perl's Today now opens History: your year as a path, what's next, and this week */
@@ -1663,6 +1655,7 @@ function renderCalendar(){
 $("#q").addEventListener("input", e => { state.filter.q = e.target.value; renderJournalList(); });
 function renderJournal(){
   const fr = $("#frot"), fc = $("#fcomp"); fr.textContent = ""; fc.textContent = "";
+  const js = $("#jstrip"); if (js){ js.textContent = ""; const cur = currentRotation(), st = thisRotation(cur, rotationOn(todayKey())); if (st) js.append(st); }
   const used = new Set(state.entries.map(e => e.rotation));
   fr.append(h("button", {type:"button", class:"chip", "aria-pressed":String(state.filter.rot === "all"), text:"All rotations", onclick:() => { state.filter.rot = "all"; renderJournal(); }}));
   for (const r of allRotations().filter(x => used.has(x))) fr.append(h("button", {type:"button", class:"chip " + cc(r), "aria-pressed":String(state.filter.rot === r), onclick:() => { state.filter.rot = r; renderJournal(); }}, h("span", {class:"dot"}), r));

@@ -196,7 +196,8 @@ function hardHtml(hard, where) {
 }
 function listHtml(where) {
   const hard = hardDay(todayIso()); const its = items();
-  return `${hardHtml(hard, where)}<ul class="hb-rows">${its.map((h) => rowHtml(h, hard, where)).join("")}</ul>`;
+  return where === "t" ? `${hard ? hardHtml(hard, where) : ""}<ul class="hb-rows">${its.map((h) => rowHtml(h, hard, where)).join("")}</ul>${hard ? "" : hardHtml(hard, where)}`
+    : `${hardHtml(hard, where)}<ul class="hb-rows">${its.map((h) => rowHtml(h, hard, where)).join("")}</ul>`;
 }
 function todayCard() {
   if (!A.booted) return "";
@@ -205,7 +206,7 @@ function todayCard() {
   const t = todayIso(); const n = its.filter((h) => mark(t, h.id)).length;
   return `<section class="panel hb-today" id="hb-today" aria-labelledby="hb-today-h">
     <div class="panel-head"><span class="ph-t"><h2 id="hb-today-h">Habits</h2><span class="count-chip num" aria-label="${n} of ${its.length} done today">${n}/${its.length}</span></span>
-      <span class="hb-head-acts">${ankiItems().length ? `<button class="btn quiet small" id="hb-today-sync" data-act="hab-sync">Sync Anki</button>` : ""}<a class="link" href="#habits">Wheel</a></span></div>
+      <span class="hb-head-acts">${ankiItems().length ? `<button class="btn quiet small" id="hb-today-sync" data-act="hab-sync">Sync Anki</button>` : ""}<a class="link" href="#habits">All habits</a></span></div>
     ${n === its.length ? `<p class="hb-all">All done today. That's who you are.</p>` : ""}
     ${listHtml("t")}
     ${ankiItems().length ? `<p class="hb-foot">${ankiLine()}</p>` : ""}

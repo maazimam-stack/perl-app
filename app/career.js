@@ -1,7 +1,10 @@
 /* Career: reads the student's resume (in this browser) into what makes them distinctive, the people and organisations
    in it, and how both connect to the specialties they're weighing. The resume text is sent to Claude only when the
    student taps Analyze; the quick read runs here. Results live in state.career (School-side document); the resume
-   itself is never saved. Nothing is ever sent to a contact: outreach notes are drafts to copy. */
+   itself is never saved. Nothing is ever sent to a contact: outreach notes are drafts to copy.
+   Mentors (#mentors, a tab of Career) is a rolodex kept in the same network list, plus "Who should I talk to?": an idea
+   is matched to mentors in this browser, or by Claude when the student taps Find, sending only the fields listed in
+   findPrompt (never notes kept private, never how they know them or what they've helped with). */
 (() => {
 "use strict";
 const A = window.PERL_APP;
@@ -17,7 +20,12 @@ const arr = (x) => (Array.isArray(x) ? x : []);
 function ensure() {
   const s = st();
   if (!s.career || typeof s.career !== "object") s.career = { v: 1, profile: null, network: [], removed: [], spec: "", file: "", importedAt: 0 };
-  const c = s.career; c.network = arr(c.network); c.removed = arr(c.removed);
+  const c = s.career; c.network = arr(c.network).filter((p) => p && typeof p === "object" && p.name); c.removed = arr(c.removed); c.asks = arr(c.asks);
+  for (const p of c.network) {
+    p.specialties = arr(p.specialties); p.tags = arr(p.tags); p.experience = arr(p.experience); p.userFields = arr(p.userFields);
+    if (!p.links || typeof p.links !== "object" || Array.isArray(p.links)) p.links = {};
+    if (!p.id) p.id = uid();
+  }
   return c;
 }
 function save(msg) { A.persist(); A.render(); if (msg) A.toast(msg); }
@@ -337,9 +345,15 @@ function quickRead(text) {
 
 /* ================= Claude: one prompt, strict JSON, validated ================= */
 const KINDS = ["research", "leadership", "clinical", "venture", "teaching", "service", "other"];
-const RELS = ["mentor", "PI", "collaborator", "organization", "program"];
-const REL_LABEL = { mentor: "Mentors", PI: "PIs and supervisors", collaborator: "Collaborators", program: "Programs", organization: "Organisations" };
-const REL_ONE = { mentor: "Mentor", PI: "PI", collaborator: "Collaborator", program: "Program", organization: "Organisation" };
+const RELS = ["mentor", "PI", "advisor", "collaborator", "peer", "organization", "program"];
+const REL_LABEL = { mentor: "Mentors", PI: "PIs and supervisors", advisor: "Advisors", collaborator: "Collaborators", peer: "Peers", program: "Programs", organization: "Organisations" };
+const REL_ONE = { mentor: "Mentor", PI: "PI", advisor: "Advisor", collaborator: "Collaborator", peer: "Peer", program: "Program", organization: "Organisation" };
+const WARM_LABEL = { warm: "Warm", cool: "Cool", cold: "Cold" };
+const WARM_RANK = { warm: 0, cool: 1, "": 2, cold: 3 };
+const notesShared = (p) => p.notePrivate === false; /* notes stay out of every prompt unless the student turned sharing on */
+/* the overview form edits these; an entry marked edited before per-field tracking existed counts them all as the student's */
+const LEGACY_FIELDS = ["name", "role", "org", "relation", "specialties", "note", "lastContact", "warmth"];
+const mineOf = (p) => new Set(arr(p.userFields).length ? p.userFields : p.edited ? LEGACY_FIELDS : []);
 function analysisPrompt(text) {
   return `You read a medical student's resume to help them see what makes them distinctive, who is in their professional network, and how both relate to medical specialties. Use ONLY the resume between the <resume> markers.
 
@@ -415,11 +429,13 @@ function mergeNetwork(old, fresh) {
     const o = byKey.get(k);
     if (o) {
       const keep = o.edited ? { name: o.name, role: o.role, org: o.org, relation: o.relation, specialties: o.specialties } : {};
+      for (const k of mineOf(o)) keep[k] = o[k];
+      if (o.src === "import") for (const k of ["role", "org", "relation"]) if (o[k]) keep[k] = o[k]; /* an imported card beats a resume guess */
       out.push({ ...o, ...f, ...keep, id: o.id, note: o.note || "", lastContact: o.lastContact || "", warmth: o.warmth || "", src: o.src, edited: !!o.edited });
     } else out.push({ id: uid(), src: "resume", note: "", lastContact: "", warmth: "", edited: false, ...f });
   }
   /* people the student added or worked on stay even when the new resume doesn't list them */
-  for (const o of old) if (!seen.has(nkey(o.name)) && (o.src === "user" || o.edited || o.note || o.lastContact || o.warmth)) out.push(o);
+  for (const o of old) if (!seen.has(nkey(o.name)) && (o.src === "user" || o.src === "import" || o.edited || o.note || o.lastContact || o.warmth || arr(o.tags).length || arr(o.experience).length)) out.push(o);
   return out;
 }
 function apply(res, source) {
@@ -491,7 +507,7 @@ function rotFor(spec) {
 const surname = (p) => (p.relation === "organization" || p.relation === "program" ? p.name : /^(dr|prof)/i.test(p.name) ? p.name.split(" ").filter((w) => !/^[A-Z]\.$/.test(w)).slice(0, 1).concat(p.name.split(" ").slice(-1)).join(" ") : p.name);
 function peopleFor(spec) {
   const c = C(); if (!c) return [];
-  const rank = { warm: 0, "": 1, cold: 2 };
+  const rank = WARM_RANK;
   return c.network.filter((p) => arr(p.specialties).includes(spec)).sort((a, b) => (rank[a.warmth || ""] - rank[b.warmth || ""]) || ((a.relation === "organization" || a.relation === "program") - (b.relation === "organization" || b.relation === "program")));
 }
 function signalsFor(spec) {
@@ -622,16 +638,40 @@ Would any time in the next few weeks work? [Offer two times]
 Thank you,
 [Your name]`;
 }
-async function draftFor(id, where = "net") {
+/* a note about an idea, from "Who should I talk to?": ctx = { idea, ask, evidence: [phrases from their card] } */
+function ideaStarter(p, ctx) {
+  const ev = arr(ctx.evidence)[0];
+  return `Subject: Your perspective on an idea
+
+Dear ${surname(p)},
+
+I hope you're well. I'm working on an idea: ${clip(ctx.idea, 180)} ${ev ? `Given your work on ${clip(ev, 100).replace(/\.$/, "")}, ` : ""}I'd really value your perspective.${ctx.ask ? `\n\n${clip(ctx.ask, 240)}` : ""}
+
+Would 20 minutes in the next few weeks work? [Offer two times]
+
+Thank you,
+[Your name]`;
+}
+function ideaDraftPrompt(p, ctx) {
+  return `Draft a short outreach note from a medical student to ${p.name}${p.role ? `, ${p.role}` : ""}${p.org ? `, ${p.org}` : ""}.
+Who they are to the student: ${REL_ONE[p.relation] || "contact"}${p.warmth ? ` (a ${p.warmth} relationship)` : ""}.
+The student's idea or project: "${clip(ctx.idea, 600)}".
+What the student wants to ask them: ${clip(ctx.ask || "their perspective on the idea", 300)}
+${arr(ctx.evidence).length ? `Relevant lines from their background: ${ctx.evidence.map((e) => `"${clip(e, 200)}"`).join("; ")}.` : ""}
+${notesShared(p) && p.note ? `The student's own note about this person: "${clip(p.note, 300)}".` : ""}
+Rules: under 140 words; first line "Subject: ..."; warm, direct, first person, plain text. Use only the facts given here; never invent shared history, papers, dates or praise. Put anything the student must fill in inside [square brackets]. End with "[Your name]".`;
+}
+async function draftFor(id, where = "net", ctx = null) {
   const c = C(); const p = c && c.network.find((x) => x.id === id); if (!p) return;
   const u = U(); const spec = (c.spec && SPEC_BY[c.spec]) ? c.spec : (p.specialties[0] || "your specialty interests");
-  const S = A.SAMPLE;
-  if (!S) { u.draft = { id, where, status: "done", text: starter(p, spec), starter: true }; A.render(); A.refocus("#cr-draft-text"); return; }
+  const S = A.SAMPLE; const box = "#cr-draft-text";
+  const plain = () => (ctx ? ideaStarter(p, ctx) : starter(p, spec));
+  if (!S) { u.draft = { id, where, status: "done", text: plain(), starter: true }; A.render(); A.refocus(box); return; }
   u.draft = { id, where, status: "busy", text: "" }; A.render();
   const tm = rotFor(spec);
-  const prompt = `Draft a short outreach note from a medical student to ${p.name}${p.role ? `, ${p.role}` : ""}${p.org ? `, ${p.org}` : ""}.
+  const prompt = ctx ? ideaDraftPrompt(p, ctx) : `Draft a short outreach note from a medical student to ${p.name}${p.role ? `, ${p.role}` : ""}${p.org ? `, ${p.org}` : ""}.
 What the student's resume says about them: ${REL_ONE[p.relation] || "contact"}${p.evidence ? `; "${p.evidence}"` : ""}.
-${p.note ? `The student's own note about this person: "${clip(p.note, 300)}".` : ""}
+${notesShared(p) && p.note ? `The student's own note about this person: "${clip(p.note, 300)}".` : ""}
 Purpose: ask for a 20-minute conversation about ${spec}.${tm && (tm.cur || tm.next) ? ` Timing the student may mention: ${tm.text}` : ""}
 The student in one line: ${(c.profile && c.profile.headline) || "a medical student"}.
 Rules: under 120 words; first line "Subject: ..."; warm, direct, first person, plain text. Use only the facts given here; never invent shared history, papers, dates or praise. Put anything the student must fill in inside [square brackets]. End with "[Your name]".`;
@@ -639,7 +679,7 @@ Rules: under 120 words; first line "Subject: ..."; warm, direct, first person, p
     const out = await S(prompt, { cache: false, onText: ({ text }) => { u.draft.text = text; const el = document.getElementById("cr-draft-text"); if (el) el.value = text; } });
     u.draft = { id, where, status: "done", text: String(out.text || "").trim() };
   } catch (e) {
-    u.draft = { id, where, status: "done", text: starter(p, spec), starter: true, why: e && e.code === "rate_limited" ? "Claude is busy, so here's a starter to edit." : "Claude isn't available, so here's a starter to edit." };
+    u.draft = { id, where, status: "done", text: plain(), starter: true, why: e && e.code === "rate_limited" ? "Claude is busy, so here's a starter to edit." : "Claude isn't available, so here's a starter to edit." };
   }
   A.render(); A.refocus("#cr-draft-text");
 }
@@ -714,7 +754,7 @@ function contactForm(p) {
       <div class="field"><label for="cr-f-org">Where</label><input type="text" id="cr-f-org" name="org" value="${esc(v.org)}" maxlength="80"></div>
       <div class="field cr-span"><label for="cr-f-spec">Specialties they connect to</label><input type="text" id="cr-f-spec" name="specialties" value="${esc(arr(v.specialties).join(", "))}" list="cr-spec-list" placeholder="Cardiology, Internal Medicine" aria-describedby="cr-f-spec-h"><span class="hint" id="cr-f-spec-h">Separate with commas.</span></div>
       <div class="field"><label for="cr-f-last">Last contacted</label><input type="date" id="cr-f-last" name="lastContact" value="${esc(v.lastContact)}"></div>
-      <fieldset class="field cr-warmth"><legend class="label">Relationship temperature</legend><div class="seg" role="radiogroup" aria-label="Relationship temperature">${[["warm", "Warm"], ["cold", "Cold"], ["", "Not sure"]].map(([k, l]) => `<label class="cr-radio"><input type="radio" name="warmth" value="${k}" ${(v.warmth || "") === k ? "checked" : ""}><span>${l}</span></label>`).join("")}</div></fieldset>
+      <fieldset class="field cr-warmth"><legend class="label">Relationship temperature</legend><div class="seg" role="radiogroup" aria-label="Relationship temperature">${[["warm", "Warm"], ["cool", "Cool"], ["cold", "Cold"], ["", "Not sure"]].map(([k, l]) => `<label class="cr-radio"><input type="radio" name="warmth" value="${k}" ${(v.warmth || "") === k ? "checked" : ""}><span>${l}</span></label>`).join("")}</div></fieldset>
       <div class="field cr-span"><label for="cr-f-note">Note</label><textarea id="cr-f-note" name="note" rows="3" maxlength="1000" placeholder="How you know them, what you talked about last">${esc(v.note)}</textarea></div>
     </div>
     <div class="panel-foot"><span></span><span class="cr-btns"><button type="button" class="btn small" data-act="cr-edit-cancel">Cancel</button><button type="submit" class="btn primary small">${p ? "Save" : "Add"}</button></span></div>
@@ -730,7 +770,7 @@ function personRow(p) {
   const meta = [REL_ONE[p.relation] && (p.relation === "organization" || p.relation === "program") ? "" : p.role, p.org].filter(Boolean).join(" · ");
   return `<li class="cr-p" data-id="${esc(p.id)}">
     <div class="cr-p-main">
-      <div class="cr-p-t"><b>${esc(p.name)}</b>${p.warmth ? `<span class="cr-temp ${p.warmth}">${p.warmth === "warm" ? "Warm" : "Cold"}</span>` : ""}</div>
+      <div class="cr-p-t"><b>${esc(p.name)}</b>${WARM_LABEL[p.warmth] ? `<span class="cr-temp ${p.warmth}">${WARM_LABEL[p.warmth]}</span>` : ""}</div>
       ${meta ? `<small>${esc(meta)}</small>` : ""}
       ${p.specialties.length ? `<div class="cr-p-specs">${p.specialties.map((s) => `<button class="cr-tag" data-act="cr-spec-pick" data-spec="${esc(s)}" aria-label="Explore ${esc(s)}">${esc(s)}</button>`).join("")}</div>` : ""}
       ${p.note ? `<p class="cr-p-note">${esc(clip(p.note, 220))}</p>` : ""}
@@ -773,7 +813,7 @@ function explorerPanel() {
       <div><h3 class="label">Gaps</h3>${gaps.length ? `<ul class="cr-bul gap">${gaps.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>` : `<p class="hint">No gaps flagged.</p>`}</div>
     </div>
     <h3 class="label mt16">Who you know here</h3>
-    ${people.length ? `<ul class="cr-mini">${people.slice(0, 6).map((p) => `<li><span><b>${esc(p.name)}</b> <small>${esc([REL_ONE[p.relation], p.org].filter(Boolean).join(" · "))}</small></span>${p.warmth ? `<span class="cr-temp ${p.warmth}">${p.warmth === "warm" ? "Warm" : "Cold"}</span>` : ""}</li>`).join("")}</ul>` : `<p class="hint">No one yet. Link a contact to ${esc(spec)} with Edit, or add someone you met on a rotation.</p>`}
+    ${people.length ? `<ul class="cr-mini">${people.slice(0, 6).map((p) => `<li><span><b>${esc(p.name)}</b> <small>${esc([REL_ONE[p.relation], p.org].filter(Boolean).join(" · "))}</small></span>${WARM_LABEL[p.warmth] ? `<span class="cr-temp ${p.warmth}">${WARM_LABEL[p.warmth]}</span>` : ""}</li>`).join("")}</ul>` : `<p class="hint">No one yet. Link a contact to ${esc(spec)} with Edit, or add someone you met on a rotation.</p>`}
     ${compBlock(spec, tm)}
     <h3 class="label mt16">Next three steps</h3>
     <ol class="cr-acts">${acts.map((a) => `<li><span>${esc(a.t)}</span>${a.draft ? `<button class="btn small" data-act="cr-draft" data-id="${esc(a.draft)}" data-where="spec">Draft note</button>` : a.go ? `<button class="btn small" data-act="cr-go" data-to="${esc(a.go)}">Open Rotations</button>` : ""}${a.draft ? draftBox(a.draft, "spec") : ""}</li>`).join("")}</ol>
@@ -783,7 +823,8 @@ function vCareer() {
   const c = C(); const u = U(); const has = !!(c && c.profile);
   const finding = has ? `Built from ${esc(c.file || "your resume")}. Everything here is yours to edit; a newer resume updates it without touching your notes.` : "Import your resume. Perl finds what sets you apart, maps the people and organisations in it, and connects them to the specialties you're weighing and the rotations ahead.";
   return `<div id="cr-root" class="cr">
-    <div class="title-row"><div><h1>Career</h1><p class="finding">${finding}</p></div>${has ? `<div class="title-actions">${u.reset ? `<span class="hint">Delete your career profile and network?</span><button class="btn small" data-act="cr-reset-no">Keep</button><button class="btn small danger" data-act="cr-reset-yes">Delete</button>` : `<button class="btn quiet small" data-act="cr-reset">Start over</button>`}</div>` : ""}</div>
+    <div class="title-row"><div><h1>Career</h1><p class="finding">${finding}</p></div>${has ? `<div class="title-actions">${u.reset ? `<span class="hint">Delete your resume reading and the people it found? Mentors you added or imported stay.</span><button class="btn small" data-act="cr-reset-no">Keep</button><button class="btn small danger" data-act="cr-reset-yes">Delete</button>` : `<button class="btn quiet small" data-act="cr-reset">Start over</button>`}</div>` : ""}</div>
+    ${tabsHtml("career")}
     ${importPanel()}
     ${has ? `<div class="cr-grid"><div class="cr-col">${whoPanel()}${explorerPanel()}</div><div class="cr-col">${networkPanel()}</div></div>` : ""}
   </div>`;
@@ -802,16 +843,573 @@ function todayCard() {
   </section>`;
 }
 
+/* ================= mentors: a rolodex kept in the same network list =================
+   A mentor is any network entry that is a person. Extra fields (all optional): tags, experience (bullets), links
+   {faculty, linkedin, scholar}, how (how you know them), helped (what they've helped with), notePrivate (notes kept
+   out of Claude prompts; on unless turned off) and userFields (fields the student edited, which an import never
+   overwrites). */
+const PEOPLE_RELS = ["mentor", "PI", "advisor", "collaborator", "peer"];
+const isPerson = (p) => !!p && p.relation !== "organization" && p.relation !== "program";
+const LINK_KEYS = [["faculty", "Faculty page"], ["linkedin", "LinkedIn"], ["scholar", "Google Scholar"]];
+const MU = () => { const u = U(); return (u.mt = u.mt || { q: "", tag: "", edit: null, fast: false, imp: false, impErr: "", idea: "", busy: false, progress: "", err: "", cur: null, rm: null, fastBusy: false }); };
+const mentors = () => ensure().network.filter(isPerson);
+const okUrl = (s) => { const t = String(s || "").trim(); return /^https?:\/\/[^\s<>"'`]+$/i.test(t) ? t.slice(0, 300) : ""; };
+const EXP_SPLIT = /\r?\n|\s*[;•]\s+/;
+const listOf = (x, re = /[;,|\n]/) => (Array.isArray(x) ? x : typeof x === "string" ? x.split(re) : [])
+  .map((v) => (typeof v === "string" || typeof v === "number" ? String(v).replace(BULLET, "").replace(/\s+/g, " ").trim() : "")).filter(Boolean);
+const uniqCI = (a) => { const seen = new Set(); return a.filter((x) => { const k = norm(x); if (!k || seen.has(k)) return false; seen.add(k); return true; }); };
+function relOf(v) {
+  const r = String(v || "").trim().toLowerCase();
+  if (/^pi$|principal|supervis/.test(r)) return "PI";
+  if (/advis|adviser/.test(r)) return "advisor";
+  if (/collab/.test(r)) return "collaborator";
+  if (/peer|friend|classmate/.test(r)) return "peer";
+  return "mentor";
+}
+
+/* ---------- import: JSON (an array, or {mentors: [...]}) or CSV with the same column names ---------- */
+function fromImport(o) {
+  if (!o || typeof o !== "object" || Array.isArray(o)) return null;
+  const K = {}; for (const [k, v] of Object.entries(o)) K[k.toLowerCase().replace(/[^a-z]/g, "")] = v;
+  const g = (...ks) => { for (const k of ks) { const v = K[k]; if (v !== undefined && v !== null && v !== "") return v; } return ""; };
+  const s = (v, n) => (typeof v === "string" || typeof v === "number" ? clip(v, n) : "");
+  const name = s(g("name", "fullname"), 80); if (!nkey(name)) return null;
+  const L = {}; if (K.links && typeof K.links === "object" && !Array.isArray(K.links)) for (const [k, v] of Object.entries(K.links)) L[k.toLowerCase().replace(/[^a-z]/g, "")] = v;
+  const warm = String(g("warmth") || "").trim().toLowerCase(); const last = String(g("lastcontacted", "lastcontact") || "").trim().slice(0, 10);
+  const priv = g("notesprivate", "noteprivate", "keepnotesprivate"); const helped = g("helpedwith", "helped");
+  const rel = g("relationship", "relation");
+  return {
+    name, role: s(g("title", "role", "position"), 100), org: s(g("institution", "org", "organization", "organisation", "affiliation"), 100),
+    tags: uniqCI(listOf(g("tags", "expertise", "expertisetags")).map((t) => clip(t, 40))).slice(0, 20),
+    experience: uniqCI(listOf(g("experience", "experiencesummary", "bullets"), EXP_SPLIT).map((t) => clip(t, 240))).slice(0, 12),
+    links: { faculty: okUrl(L.faculty || L.facultypage || g("faculty", "facultypage", "facultyurl", "website")), linkedin: okUrl(L.linkedin || g("linkedin", "linkedinurl")), scholar: okUrl(L.scholar || L.googlescholar || g("scholar", "googlescholar", "scholarurl")) },
+    how: s(g("how", "howyouknowthem", "howknown", "howweknow"), 300),
+    relation: rel ? relOf(rel) : "", warmth: WARM_LABEL[warm] ? warm : "", lastContact: A.parseD(last) ? last : "",
+    helped: Array.isArray(helped) ? clip(listOf(helped).join("; "), 500) : s(helped, 500),
+    note: typeof g("notes", "note") === "string" ? String(g("notes", "note")).trim().slice(0, 2000) : "",
+    notePrivate: !(priv === false || /^(false|no|0|n|off)$/i.test(String(priv).trim())), privGiven: priv !== "",
+    specialties: [...new Set(listOf(g("specialties")).map(canonSpec).filter(Boolean))].slice(0, 6)
+  };
+}
+function parseCsv(text) {
+  const rows = []; let row = [], f = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += ch; continue; }
+    if (ch === '"') q = true;
+    else if (ch === ",") { row.push(f); f = ""; }
+    else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; row.push(f); rows.push(row); row = []; f = ""; }
+    else f += ch;
+  }
+  if (f || row.length) { row.push(f); rows.push(row); }
+  const clean = rows.filter((r) => r.some((x) => x.trim()));
+  if (clean.length < 2) return [];
+  const head = clean[0].map((h) => h.trim().replace(/^﻿/, ""));
+  return clean.slice(1).map((r) => Object.fromEntries(head.map((h, i) => [h, (r[i] || "").trim()])));
+}
+function importList(text) {
+  const t = String(text || "").trim().replace(/^﻿/, "");
+  if (!t) throw new Error("Nothing to import.");
+  if (/^[[{]/.test(t)) {
+    let j; try { j = JSON.parse(t); } catch { throw new Error("That JSON couldn't be read. Check for a missing comma or bracket."); }
+    const list = Array.isArray(j) ? j : j && Array.isArray(j.mentors) ? j.mentors : j && typeof j === "object" ? [j] : [];
+    return list;
+  }
+  const rows = parseCsv(t);
+  if (!rows.length) throw new Error("No rows found. A CSV needs a header row (name, title, institution, …) and one row per mentor.");
+  return rows;
+}
+const MERGE_SCALARS = ["role", "org", "how", "relation", "warmth", "lastContact", "helped", "note"];
+function findSame(net, m) { const k = nkey(m.name), o = norm(m.org); return net.find((p) => isPerson(p) && nkey(p.name) === k && (!o || !p.org || norm(p.org) === o)); }
+/* dedupe by name + institution; fill and refresh what the student hasn't edited, never touch what they have */
+function importMentors(list) {
+  const c = ensure(); let added = 0, merged = 0, skipped = 0;
+  for (const raw of arr(list)) {
+    const m = fromImport(raw); if (!m) { skipped++; continue; }
+    c.removed = c.removed.filter((k) => k !== nkey(m.name));
+    const p = findSame(c.network, m);
+    const { privGiven, ...card } = m;
+    if (!p) { c.network.push({ id: uid(), src: "import", evidence: "", edited: false, userFields: [], ...card, relation: card.relation || "mentor" }); added++; continue; }
+    const mine = mineOf(p);
+    for (const f of MERGE_SCALARS) if (!mine.has(f) && m[f]) p[f] = m[f];
+    for (const f of ["tags", "experience", "specialties"]) if (!mine.has(f) && m[f].length) p[f] = uniqCI([...arr(p[f]), ...m[f]]);
+    if (!mine.has("links")) for (const [k] of LINK_KEYS) if (m.links[k]) p.links = { ...p.links, [k]: m.links[k] };
+    if (!mine.has("notePrivate") && privGiven) p.notePrivate = m.notePrivate;
+    if (!p.org && m.org) p.org = m.org;
+    merged++;
+  }
+  return { added, merged, skipped };
+}
+function exportMentors() {
+  return mentors().map((p) => ({ name: p.name, title: p.role || "", institution: p.org || "", tags: p.tags, experience: p.experience,
+    links: { faculty: p.links.faculty || "", linkedin: p.links.linkedin || "", scholar: p.links.scholar || "" }, how: p.how || "",
+    relationship: p.relation, warmth: p.warmth || "", lastContacted: p.lastContact || "", helpedWith: p.helped || "", notes: p.note || "",
+    notesPrivate: p.notePrivate !== false, specialties: p.specialties }));
+}
+async function saveText(filename, text, mime) {
+  if (window.PN_HOST === "claude") {
+    let dl = null; try { const c = window.claude; dl = c && typeof c.use === "function" ? await c.use("downloads") : null; } catch { dl = null; }
+    if (dl && typeof dl.save === "function") {
+      try { await dl.save({ filename, data: text }); A.toast(`Saved ${filename}`); return; }
+      catch (e) { A.toast(e && e.code === "declined" ? "Download cancelled." : "Couldn't save the file here."); return; }
+    }
+  }
+  try {
+    const url = URL.createObjectURL(new Blob([text], { type: mime }));
+    const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000); A.toast(`Downloaded ${filename}`);
+  } catch { A.toast("Couldn't create the file in this browser."); }
+}
+function doImport(text) {
+  const mu = MU();
+  let list; try { list = importList(text); } catch (e) { mu.impErr = e.message; A.render(); A.refocus("#mt-paste"); return; }
+  const r = importMentors(list);
+  if (!r.added && !r.merged) { mu.impErr = `No mentors found${r.skipped ? ` (${r.skipped} ${r.skipped === 1 ? "row has" : "rows have"} no name)` : ""}.`; A.render(); A.refocus("#mt-paste"); return; }
+  mu.imp = false; mu.impErr = ""; mu.paste = "";
+  save(`Imported: ${r.added} new, ${r.merged} merged${r.skipped ? `, ${r.skipped} skipped (no name)` : ""}. Your own edits were kept.`); A.refocus('[data-act="mt-import"]');
+}
+async function readImportFile(file) {
+  const mu = MU();
+  if (file.size > 2e6) { mu.impErr = "That file is over 2 MB. Export a smaller list."; A.render(); return; }
+  try { doImport(await file.text()); } catch { mu.impErr = "Couldn't read that file."; A.render(); }
+}
+
+/* ---------- fast add: name plus a pasted bio, split here or filled by Claude ---------- */
+const TOPICS = [
+  ["AI and machine learning", /\bAI\b|artificial intelligence|machine learning|deep learning|neural net|\bLLMs?\b|large language model|predictive model|prediction model|computer vision|natural language processing|\bNLP\b/i],
+  ["data science", /data science|biostatistic|statistic|epidemiolog|\bcohort|registry|big data|database|real-world data|EHR data/i],
+  ["wearables and digital health", /wearable|fitbit|smartwatch|apple watch|digital health|mobile health|\bmhealth|remote (patient )?monitoring|sensors?\b/i],
+  ["telehealth", /telehealth|telemedicine|virtual care/i],
+  ["informatics and EHR", /informatics|\bEHR\b|\bEMR\b|electronic health record|\bEpic\b|clinical decision support/i],
+  ["medical devices", /medical device|devices?\b|hardware|prototyp|biomedical engineering|bioengineering/i],
+  ["startups and ventures", /start-?ups?\b|founder|co-?found|venture(?! capital)|entrepreneur|commerciali[sz]|incubat|accelerator|spin-?out/i],
+  ["investing and fundraising", /venture capital|\bVC\b|investors?\b|investing|investment|fundrais|seed round|series [ab]\b|angel/i],
+  ["regulatory and FDA", /\bFDA\b|regulatory|510\(k\)|clearance|\bIRB\b/i],
+  ["clinical trials", /clinical trial|randomi[sz]ed|\bRCT\b|trial design/i],
+  ["health equity", /equity|disparit|underserved|social determinants|social drivers|underrepresented|access to care/i],
+  ["public health and policy", /public health|health policy|\bpolicy\b|advocacy|legislat|population health|community health/i],
+  ["global health", /global health|low- and middle-income|\bLMICs?\b/i],
+  ["medical education", /medical education|curricul|teaching|residency program director|education research/i],
+  ["quality and patient safety", /quality improvement|\bQI\b|patient safety|implementation science|outcomes research/i],
+  ["health economics", /health economics|cost-effective|reimbursement|payers?\b|value-based|pricing/i],
+  ["genomics and precision medicine", /genom|genetic|precision (medicine|health)|polygenic|biomarker/i],
+  ["sleep", /\bsleep|insomnia|circadian/i],
+  ["prevention and lifestyle", /prevent|lifestyle|exercise|physical activity|nutrition|obesity|fitness/i],
+  ["frailty and aging", /frailty|\baging\b|ageing|older adults|geriatric/i],
+  ["screening", /screening|early detection|risk score|risk assessment/i],
+  ["product and design", /product (design|management)|user research|\bUX\b|human-centered design|design thinking/i],
+  ["patents and IP", /patent|intellectual property|licensing/i]
+];
+const CONCEPTS = [...TOPICS, ...SPECS.map((s) => [s.n, s.kw])];
+const ROLE_RE = /\b((?:(?:Assistant|Associate|Adjunct|Clinical|Full|Distinguished|Senior|Managing|General|Venture|Executive|Medical|Program|Founding|Co-)\s*)*(?:Professor|Chair|Chief|Director|Dean|Fellow|Founder|Co-?founder|CEO|CMO|CTO|CSO|Partner|Principal|Investigator|Attending|Physician|Cardiologist|Surgeon|Radiologist|Oncologist|Scientist|Lecturer|Instructor|Manager|Head|Resident|Researcher)\b(?:\s+(?:of|in|and)\s+[A-Z][\w&-]*(?:\s+[A-Z&][\w&-]*){0,3})?)/;
+function parseBio(name, bio) {
+  const text = String(bio || "").slice(0, 8000);
+  const urls = [...text.matchAll(/https?:\/\/[^\s<>"')]+/gi)].map((m) => m[0].replace(/[.,;]+$/, ""));
+  const links = { faculty: "", linkedin: "", scholar: "" };
+  for (const u of urls) { const k = /linkedin\.com/i.test(u) ? "linkedin" : /scholar\.google/i.test(u) ? "scholar" : "faculty"; if (!links[k]) links[k] = okUrl(u); }
+  const plain = text.replace(/https?:\/\/[^\s<>"')]+/gi, " ");
+  const sentences = plain.split(/\r?\n+|(?<=[.!?])\s+(?=[A-Z])/).map((l) => l.replace(BULLET, "").replace(/\s+/g, " ").trim()).filter((l) => l.length > 2);
+  let role = "", org = "";
+  for (const l of sentences) { const m = l.match(ROLE_RE); if (m) { role = clip(m[1].replace(/\s+(at|with)$/i, ""), 100); const o = l.slice(m.index + m[0].length).match(ORG_RE) || l.match(ORG_RE); if (o) org = clip(o[0].trim(), 100); break; } }
+  if (!org) { const o = plain.match(ORG_RE); if (o) org = clip(o[0].trim(), 100); }
+  const self = nkey(name);
+  const experience = uniqCI(sentences.filter((l) => l.length >= 25 && nkey(l) !== self).map((l) => clip(l, 240))).slice(0, 6);
+  const tags = uniqCI(CONCEPTS.filter(([, re]) => re.test(plain)).map(([n]) => n)).slice(0, 8);
+  return { role, org, tags, experience, links, specialties: specsIn(plain).slice(0, 4) };
+}
+function bioPrompt(name, bio) {
+  return `Fill in a mentor card for ${name} from the profile text a medical student pasted. Use ONLY the text between the <profile> markers; leave a field empty when the text doesn't say.
+
+Rules:
+- title: their current role or title, as written. institution: where they hold it, as written.
+- experience: up to 6 short bullets on their research areas, ventures, roles and notable work, each using the text's own words.
+- tags: up to 8 short expertise phrases (for example "cardiac imaging", "digital health", "venture capital").
+- links: only URLs that appear in the text.
+Reply with only this JSON (no prose, no code fences):
+{"title":"","institution":"","tags":[""],"experience":[""],"links":{"faculty":"","linkedin":"","scholar":""}}
+
+<profile>
+${String(bio).slice(0, 8000)}
+</profile>`;
+}
+/* Claude's card is kept only where the bio backs it: grounded bullets, an institution the bio names, URLs the bio has */
+function cleanBio(o, bio, fallback) {
+  if (!o || typeof o !== "object" || Array.isArray(o)) return null;
+  const g = grounder(bio); const nb = " " + norm(bio) + " ";
+  const s = (x, n) => (typeof x === "string" ? clip(x, n) : "");
+  const tags = uniqCI(arr(o.tags).map((x) => s(x, 40)).filter(Boolean)).slice(0, 8);
+  const exp = uniqCI(arr(o.experience).map((x) => s(x, 240)).filter((x) => x && g(x))).slice(0, 6);
+  const inst = s(o.institution, 100); const title = s(o.title, 100);
+  const L = o.links && typeof o.links === "object" ? o.links : {};
+  const links = {}; for (const [k] of LINK_KEYS) { const u = okUrl(L[k]); links[k] = u && bio.includes(u) ? u : fallback.links[k]; }
+  return {
+    role: title && g(title) ? title : fallback.role || title,
+    org: inst && nb.includes(" " + norm(inst) + " ") ? inst : fallback.org,
+    tags: tags.length ? tags : fallback.tags,
+    experience: exp.length ? exp : fallback.experience, links, specialties: fallback.specialties
+  };
+}
+async function fastAdd(form) {
+  const mu = MU(); const c = ensure();
+  const name = clip(form.querySelector("#mt-fast-name").value, 80); const bio = form.querySelector("#mt-fast-bio").value.trim();
+  if (!nkey(name)) { A.toast("Add a name."); A.refocus("#mt-fast-name"); return; }
+  const same = c.network.find((p) => isPerson(p) && nkey(p.name) === nkey(name));
+  if (same && !bio) { mu.fast = false; mu.edit = same.id; A.render(); A.toast(`${same.name} is already in your rolodex.`); A.refocus("#mt-f-name"); return; }
+  let card = parseBio(name, bio); let how = "split in this browser";
+  const S = A.SAMPLE;
+  if (bio && S) {
+    mu.fastBusy = true; A.render();
+    try { const out = await S(bioPrompt(name, bio), { cache: false }); const cl = cleanBio(parseReply(out && out.text), bio, card); if (cl) { card = cl; how = "filled by Claude"; } }
+    catch { how = "split in this browser (Claude wasn't available)"; }
+    mu.fastBusy = false;
+  }
+  let p;
+  if (same) { importMentors([{ name: same.name, title: card.role, institution: card.org || same.org, tags: card.tags, experience: card.experience, links: card.links, specialties: card.specialties }]); p = same; }
+  else { p = { id: uid(), src: "user", evidence: "", edited: true, userFields: ["name"], relation: "mentor", warmth: "", lastContact: "", note: "", how: "", helped: "", notePrivate: true, name, ...card }; c.network.push(p); }
+  mu.fast = false; mu.edit = p.id;
+  save(bio ? `Added ${p.name}: details ${how}. Check them below.` : `Added ${p.name}. Fill in what you know.`); A.refocus("#mt-f-role");
+}
+
+/* ---------- edit ---------- */
+function mentorFromForm(f) {
+  const fd = new FormData(f); const g = (k) => String(fd.get(k) || "").trim();
+  return { name: clip(g("name"), 80), relation: PEOPLE_RELS.includes(g("relation")) ? g("relation") : "mentor", role: clip(g("role"), 100), org: clip(g("org"), 100),
+    tags: uniqCI(listOf(g("tags"), /[,;]/).map((t) => clip(t, 40))).slice(0, 20), experience: uniqCI(listOf(g("experience"), /\r?\n/).map((t) => clip(t, 240))).slice(0, 12),
+    links: { faculty: okUrl(g("faculty")), linkedin: okUrl(g("linkedin")), scholar: okUrl(g("scholar")) }, how: clip(g("how"), 300),
+    warmth: WARM_LABEL[g("warmth")] ? g("warmth") : "", lastContact: A.parseD(g("lastContact")) ? g("lastContact") : "", helped: g("helped").slice(0, 500),
+    note: g("note").slice(0, 2000), notePrivate: fd.get("notePrivate") === "on" };
+}
+const same = (a, b) => JSON.stringify(a ?? "") === JSON.stringify(b ?? "");
+function markEdited(p, v) {
+  const mine = new Set(arr(p.userFields).length ? p.userFields : p.edited ? LEGACY_FIELDS : []);
+  for (const k of Object.keys(v)) if (!same(k === "links" ? { faculty: p.links.faculty || "", linkedin: p.links.linkedin || "", scholar: p.links.scholar || "" } : k === "notePrivate" ? p.notePrivate !== false : p[k], v[k])) mine.add(k);
+  Object.assign(p, v, { edited: true, userFields: [...mine] });
+}
+
+/* ---------- who should I talk to? ---------- */
+const STOP = new Set("about above after again also among based because been before being both build building could does doing done each even every from have having help helps into just know like make makes making many more most much need needs only other over project projects really should some such than that their them then there these they thing think this those through using very want wants what when where which while will with within without work working would your idea ideas plan start partner partners collaborator collaborators mentor mentors advisor someone person find raise raising students student patients patient people medical medicine clinical health care looking trying".split(" "));
+/* a rough stem, enough that "detects" meets "detection" */
+const stem = (w) => w.replace(/(ations?|ions?|ings?|ers?|ed|es|s)$/, (m) => (w.length - m.length >= 4 ? "" : m)).slice(0, 7);
+const tokens = (s) => norm(s).split(" ").filter((w) => w.length >= 4 && !STOP.has(w)).map(stem);
+function rankLocal(idea, people) {
+  const ideaC = CONCEPTS.filter(([, re]) => re.test(idea));
+  const raw = norm(idea).split(" ").filter((w) => w.length >= 4 && !STOP.has(w) && !ideaC.some(([, re]) => re.test(w)));
+  const shown = new Map(); for (const w of raw) if (!shown.has(stem(w))) shown.set(stem(w), w); /* stem → the word as the student wrote it */
+  const words = [...shown.keys()];
+  const covered = new Set();
+  const rows = people.map((p) => {
+    const tagText = [...p.tags, ...p.specialties].join(" ; ");
+    const lines = [...p.experience, p.role, p.org, p.helped].filter(Boolean);
+    let score = 0; const hits = []; let quote = "";
+    for (const [label, re] of ideaC) {
+      if (re.test(tagText)) { score += 3; hits.push(`${label} (tag)`); covered.add(label); }
+      else { const l = lines.find((x) => re.test(x)); if (l) { score += 2; hits.push(`${label} (experience)`); covered.add(label); if (!quote && p.experience.includes(l)) quote = l; } }
+    }
+    const tagW = new Set(tokens(tagText)), expW = new Set(tokens(lines.join(" ")));
+    let wp = 0; const wh = [];
+    for (const w of words) {
+      if (tagW.has(w)) { wp += 2; wh.push(shown.get(w)); }
+      else if (expW.has(w)) { wp += 1; wh.push(shown.get(w)); if (!quote) quote = p.experience.find((l) => tokens(l).includes(w)) || ""; }
+    }
+    score += Math.min(wp, 4);
+    if (!quote && hits.length) quote = p.experience[0] || "";
+    return { p, score, hits, words: wh.slice(0, 4), quote };
+  }).filter((r) => r.score > 0);
+  const lastT = (p) => { const d = A.parseD(p.lastContact); return d ? +d : 0; };
+  rows.sort((a, b) => b.score - a.score || WARM_RANK[a.p.warmth || ""] - WARM_RANK[b.p.warmth || ""] || lastT(b.p) - lastT(a.p) || a.p.name.localeCompare(b.p.name));
+  const top = rows.slice(0, 5);
+  const matches = top.map((r, i) => {
+    const tie = top.some((o, j) => j !== i && o.score === r.score);
+    const extra = [WARM_LABEL[r.p.warmth] ? `${WARM_LABEL[r.p.warmth].toLowerCase()} relationship` : "", r.p.lastContact ? `last contact ${A.fmtShort(A.parseD(r.p.lastContact))}` : ""].filter(Boolean);
+    const explain = `Score ${r.score}: ${[...r.hits, ...(r.words.length ? [`shared words: ${r.words.join(", ")}`] : [])].join("; ")}.${tie && extra.length ? ` Tie broken by ${extra.join(", ")}.` : ""}`;
+    const labels = r.hits.map((h) => h.replace(/ \((tag|experience)\)$/, ""));
+    const first = labels.find((l) => /startups|investing/.test(l)) || labels.find((l) => SPEC_BY[l]) || labels[0] || r.words[0] || "the idea";
+    const ask = /startups|investing/.test(first) ? `Ask how they'd test whether ${first === "investing and fundraising" ? "investors would back this" : "this could become a company"}, and who they'd show it to first.`
+      : /data science|AI and/.test(first) ? `Ask whether there's a dataset or project in their group this could plug into, and what they'd measure first.`
+      : SPEC_BY[first] ? `Ask what a ${first} clinician would need to see before trusting or using this.`
+      : `Ask for 20 minutes on the ${first} side of the idea, and who else they'd loop in.`;
+    return { id: r.p.id, name: r.p.name, why: r.hits.length ? `Their card lines up with your idea on ${andList(r.hits.slice(0, 3).map((h) => h.replace(/ \((tag|experience)\)$/, "")))}.` : `Their card shares words with your idea: ${r.words.join(", ")}.`,
+      evidence: r.quote ? [{ t: clip(r.quote, 200), ok: true }] : [], ask, flag: "", score: r.score, explain };
+  });
+  /* who first: warm before cool before cold; a warm mentor at the same place can introduce a colder one */
+  const order = []; const byWarm = [...top].sort((a, b) => WARM_RANK[a.p.warmth || ""] - WARM_RANK[b.p.warmth || ""] || b.score - a.score);
+  const firstR = byWarm[0];
+  if (firstR) order.push(`Start with ${firstR.p.name}${firstR.p.warmth ? ` (${firstR.p.warmth})` : ""}${firstR !== top[0] ? `: the warmest match` : ": the strongest match"}.`);
+  for (const r of byWarm.slice(1, 4)) {
+    const via = r.p.warmth !== "warm" && byWarm.find((o) => o.p.warmth === "warm" && o.p.org && norm(o.p.org) === norm(r.p.org) && o !== r);
+    order.push(via ? `Ask ${via.p.name} to introduce you to ${r.p.name}; both are at ${r.p.org}.` : `Then ${r.p.name}${r.p.warmth ? ` (${r.p.warmth})` : ""}.`);
+  }
+  const gaps = ideaC.map(([n]) => n).filter((n) => !covered.has(n)).map((n) => `No one in your rolodex lists ${n}.`).slice(0, 5);
+  return { matches, order, gaps };
+}
+function cardText(p) { return [p.name, p.role, p.org, ...p.tags, ...p.specialties, ...p.experience, notesShared(p) ? p.note : ""].filter(Boolean).join(" \n "); }
+function findPrompt(idea, people) {
+  const cards = people.slice(0, 150).map((p) => {
+    const o = { name: p.name, role: p.role || "", institution: p.org || "", tags: [...new Set([...p.tags, ...p.specialties])].slice(0, 12), experience: p.experience.slice(0, 8).map((x) => clip(x, 220)), relationship: p.relation, warmth: p.warmth || "unknown", lastContacted: p.lastContact || "never" };
+    if (notesShared(p) && p.note) o.notes = clip(p.note, 400);
+    return o;
+  });
+  return `A medical student wants to know which of their own mentors to contact about an idea or project. Use ONLY the mentor cards between the <mentors> markers. Never invent mentors, roles, papers or experience.
+
+Rules:
+- Pick the 3 to 5 best-placed mentors, best first. Copy each name exactly as written on its card.
+- why: one or two plain sentences on why this person fits this idea, based only on their own card.
+- evidence: 1 to 3 phrases copied word for word from THAT mentor's own card (experience, tags or role). Never quote one mentor's card for another.
+- ask: the one specific thing to ask this person, as a sentence.
+- order: 1 to 4 short steps saying who to contact first and why. Warm relationships and recent contact come first; a warm mentor at the same institution can introduce a colder one.
+- gaps: expertise this idea needs that none of these mentors has. Empty array if none.
+Reply with only this JSON (no prose, no code fences):
+{"matches":[{"name":"","why":"","evidence":[""],"ask":""}],"order":[""],"gaps":[""]}
+
+<idea>
+${clip(idea, 3000)}
+</idea>
+
+<mentors>
+${JSON.stringify(cards)}
+</mentors>`;
+}
+/* keep only rolodex mentors; every reason must quote that mentor's own card, or it's flagged */
+function cleanFind(o, people) {
+  if (!o || typeof o !== "object" || Array.isArray(o)) return null;
+  const by = new Map(people.map((p) => [nkey(p.name), p]));
+  const look = (name) => { const k = nkey(name); if (!k) return null; if (by.has(k)) return by.get(k); const w = k.split(" ").filter((x) => x.length > 1); const c = w.length > 1 ? people.filter((p) => w.every((x) => (" " + nkey(p.name) + " ").includes(" " + x + " "))) : []; return c.length === 1 ? c[0] : null; };
+  const s = (x, n) => (typeof x === "string" ? clip(x, n) : "");
+  const dropped = []; const seen = new Set(); const matches = [];
+  for (const m of arr(o.matches)) {
+    if (!m || typeof m !== "object") continue;
+    const p = look(m.name); if (!p) { if (s(m.name, 80)) dropped.push(s(m.name, 80)); continue; }
+    if (seen.has(p.id)) continue; seen.add(p.id);
+    const g = grounder(cardText(p));
+    const evidence = arr(m.evidence).concat(typeof m.evidence === "string" ? [m.evidence] : []).map((e) => s(e, 200)).filter(Boolean).slice(0, 3).map((t) => ({ t, ok: g(t) }));
+    const okN = evidence.filter((e) => e.ok).length;
+    matches.push({ id: p.id, name: p.name, why: s(m.why, 400), evidence, ask: s(m.ask, 300), flag: !okN ? "ungrounded" : okN < evidence.length ? "partly" : "" });
+    if (matches.length >= 5) break;
+  }
+  const bad = dropped.map(nkey).filter(Boolean);
+  const order = arr(o.order).map((x) => s(x, 220)).filter((x) => x && !bad.some((k) => (" " + norm(x) + " ").includes(" " + k + " "))).slice(0, 5);
+  const gaps = arr(o.gaps).map((x) => s(x, 180)).filter(Boolean).slice(0, 6);
+  if (!matches.length && !gaps.length) return null;
+  return { matches, order, gaps, dropped };
+}
+function finishFind(r) {
+  const c = ensure(); const mu = MU();
+  const item = { id: uid(), at: Date.now(), ...r };
+  c.asks = [item, ...c.asks].slice(0, 10); mu.cur = item.id; mu.busy = false; mu.progress = ""; U().draft = null;
+  save(); A.refocus("#mt-h-res");
+}
+async function runFind() {
+  const mu = MU(); const ta = document.getElementById("mt-idea"); if (ta) mu.idea = ta.value;
+  const idea = mu.idea.trim(); const people = mentors();
+  if (!idea) { mu.err = "Describe your idea or project first."; A.render(); A.refocus("#mt-idea"); return; }
+  if (!people.length) { mu.err = "Add or import a mentor first: Find matches your idea against their cards."; A.render(); A.refocus('[data-act="mt-fast"]'); return; }
+  mu.err = "";
+  const local = (note) => finishFind({ idea, source: "quick", note: note || "", dropped: [], ...rankLocal(idea, people) });
+  const S = A.SAMPLE;
+  if (!S) { local(); return; }
+  mu.busy = true; mu.progress = `Sending your idea and ${people.length} mentor ${people.length === 1 ? "card" : "cards"} to Claude…`; A.render();
+  try {
+    const out = await S(findPrompt(idea, people), { cache: false, onText: ({ text }) => {
+      const n = (text.match(/"ask"\s*:/g) || []).length; mu.progress = `Claude is reading your rolodex… ${n} ${n === 1 ? "match" : "matches"} so far`;
+      const el = document.getElementById("mt-progress"); if (el) el.textContent = mu.progress;
+    } });
+    let parsed = null; try { parsed = parseReply(out && out.text); } catch { parsed = null; }
+    const res = cleanFind(parsed, people);
+    if (!res) { local("Claude's answer couldn't be read, so this ranking was made in this browser."); return; }
+    finishFind({ idea, source: "claude", note: "", ...res });
+  } catch (e) {
+    const code = e && e.code;
+    local(code === "not_granted" ? "Claude is off, so this ranking was made in this browser." : code === "rate_limited" ? "Claude is busy right now; this ranking was made in this browser. Try Find again in a minute." : "Couldn't reach Claude, so this ranking was made in this browser.");
+  }
+}
+
+/* ---------- views ---------- */
+function tabsHtml(cur) {
+  const n = (C() ? arr(C().network) : []).filter(isPerson).length;
+  return `<nav class="subnav cr-tabs" aria-label="Career pages"><div class="subnav-in"><a href="#career" ${cur === "career" ? 'aria-current="page"' : ""}>Overview</a><a href="#mentors" ${cur === "mentors" ? 'aria-current="page"' : ""}>Mentors${n ? ` <span class="count-chip">${n}</span>` : ""}</a></div></nav>`;
+}
+const metaOf = (p) => [p.role, p.org].filter(Boolean).join(" · ");
+const warmHtml = (w) => (WARM_LABEL[w] ? `<span class="mt-w ${w}"><i aria-hidden="true"></i>${WARM_LABEL[w]}</span>` : "");
+function mentorForm(p) {
+  const v = p; const priv = v.notePrivate !== false;
+  const f = (id, label, name, val, attrs = "") => `<div class="field"><label for="mt-f-${id}">${label}</label><input type="text" id="mt-f-${id}" name="${name}" value="${esc(val || "")}" ${attrs}></div>`;
+  return `<form class="mt-form" data-form="mt-mentor" data-id="${esc(p.id)}" aria-label="Edit ${esc(p.name)}">
+    <div class="cr-form-g">
+      ${f("name", "Name", "name", v.name, 'required maxlength="80" autocomplete="off"')}
+      <div class="field"><label for="mt-f-rel">Relationship</label><select id="mt-f-rel" name="relation">${PEOPLE_RELS.map((r) => `<option value="${r}" ${v.relation === r ? "selected" : ""}>${REL_ONE[r]}</option>`).join("")}</select></div>
+      ${f("role", "Title or role", "role", v.role, 'maxlength="100" placeholder="e.g. Associate Professor of Medicine"')}
+      ${f("org", "Institution", "org", v.org, 'maxlength="100"')}
+      <div class="field cr-span"><label for="mt-f-tags">Expertise tags</label><input type="text" id="mt-f-tags" name="tags" value="${esc(v.tags.join(", "))}" aria-describedby="mt-f-tags-h" placeholder="cardiac imaging, digital health, venture capital"><span class="hint" id="mt-f-tags-h">Separate with commas. Find matches on these first.</span></div>
+      <div class="field cr-span"><label for="mt-f-exp">Experience</label><textarea id="mt-f-exp" name="experience" rows="4" aria-describedby="mt-f-exp-h" placeholder="Research areas, ventures, roles, notable work">${esc(v.experience.join("\n"))}</textarea><span class="hint" id="mt-f-exp-h">One per line.</span></div>
+      ${f("faculty", "Faculty page", "faculty", v.links.faculty, 'inputmode="url" data-url placeholder="https://"')}
+      ${f("linkedin", "LinkedIn", "linkedin", v.links.linkedin, 'inputmode="url" data-url placeholder="https://"')}
+      ${f("scholar", "Google Scholar", "scholar", v.links.scholar, 'inputmode="url" data-url placeholder="https://"')}
+      <div class="field"><label for="mt-f-last">Last contacted</label><input type="date" id="mt-f-last" name="lastContact" value="${esc(v.lastContact || "")}"></div>
+      <fieldset class="field cr-warmth cr-span"><legend class="label">Warmth</legend><div class="seg" role="radiogroup" aria-label="Warmth">${[["warm", "Warm"], ["cool", "Cool"], ["cold", "Cold"], ["", "Not sure"]].map(([k, l]) => `<label class="cr-radio"><input type="radio" name="warmth" value="${k}" ${(v.warmth || "") === k ? "checked" : ""}><span>${l}</span></label>`).join("")}</div></fieldset>
+      ${f("how", "How you know them", "how", v.how, 'maxlength="300" placeholder="e.g. PI for my summer research"')}
+      ${f("helped", "What they've helped with", "helped", v.helped, 'maxlength="500" placeholder="e.g. letter for ACC, IRB advice"')}
+      <div class="field cr-span"><label for="mt-f-note">Notes</label><textarea id="mt-f-note" name="note" rows="3" maxlength="2000">${esc(v.note || "")}</textarea>
+        <label class="mt-check"><input type="checkbox" id="mt-f-priv" name="notePrivate" ${priv ? "checked" : ""}> Keep notes private from Claude</label></div>
+    </div>
+    <div class="panel-foot">${MU().rm === p.id ? `<span class="cr-btns"><span class="hint">Remove ${esc(p.name)}?</span><button type="button" class="btn small" data-act="mt-rm-no">Keep</button><button type="button" class="btn small danger" data-act="mt-rm-yes" data-id="${esc(p.id)}">Remove</button></span>` : `<button type="button" class="btn quiet small danger" data-act="mt-rm" data-id="${esc(p.id)}">Remove</button>`}<span class="cr-btns"><button type="button" class="btn small" data-act="mt-edit-cancel">Cancel</button><button type="submit" class="btn primary small">Save</button></span></div>
+  </form>`;
+}
+function mentorRow(p) {
+  const mu = MU(); if (mu.edit === p.id) return `<li class="mt-row editing" data-id="${esc(p.id)}">${mentorForm(p)}</li>`;
+  const links = LINK_KEYS.filter(([k]) => p.links[k]).map(([k, l]) => `<a class="link" href="${esc(p.links[k])}" target="_blank" rel="noopener noreferrer">${l}<span class="sr"> for ${esc(p.name)} (opens in a new tab)</span></a>`);
+  const tags = [...new Set([...p.tags, ...p.specialties])];
+  const more = p.experience.length > 1 || p.how || p.helped || p.note || links.length;
+  return `<li class="mt-row" data-id="${esc(p.id)}">
+    <div class="mt-row-t"><b>${esc(p.name)}</b>${warmHtml(p.warmth)}</div>
+    ${metaOf(p) ? `<p class="mt-meta">${esc(metaOf(p))}</p>` : ""}
+    ${tags.length ? `<div class="mt-tags">${tags.slice(0, 8).map((t) => `<button class="mt-tag" data-act="mt-tag" data-tag="${esc(t)}" aria-pressed="${norm(mu.tag) === norm(t)}" aria-label="Show mentors tagged ${esc(t)}">${esc(t)}</button>`).join("")}</div>` : ""}
+    ${p.experience[0] ? `<p class="mt-exp1">${esc(clip(p.experience[0], 160))}</p>` : ""}
+    ${more ? `<details class="mt-more"><summary>Details</summary>
+      ${p.experience.length > 1 ? `<ul class="cr-bul">${p.experience.slice(1).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      <dl class="mt-dl">${p.how ? `<dt>How you know them</dt><dd>${esc(p.how)}</dd>` : ""}${p.helped ? `<dt>Helped with</dt><dd>${esc(p.helped)}</dd>` : ""}${p.note ? `<dt>Notes <span class="mt-priv">${p.notePrivate !== false ? "private from Claude" : "shared with Claude"}</span></dt><dd>${esc(p.note)}</dd>` : ""}</dl>
+      ${links.length ? `<p class="mt-links">${links.join("")}</p>` : ""}
+    </details>` : ""}
+    <div class="mt-foot"><small>${esc(REL_ONE[p.relation] || "Mentor")} · ${esc(lastLabel(p))}</small><span class="mt-acts"><button class="btn quiet small" data-act="mt-touch" data-id="${esc(p.id)}" aria-label="Mark ${esc(p.name)} contacted today">Contacted today</button><button class="btn quiet small" data-act="mt-edit" data-id="${esc(p.id)}" aria-label="Edit ${esc(p.name)}">Edit</button></span></div>
+  </li>`;
+}
+function filtered(list) {
+  const mu = MU(); const q = norm(mu.q); const tg = norm(mu.tag);
+  return list.filter((p) => (!tg || [...p.tags, ...p.specialties].some((t) => norm(t) === tg)) && (!q || norm([p.name, p.role, p.org, p.how, ...p.tags, ...p.specialties, ...p.experience].join(" ")).includes(q)));
+}
+function importBox() {
+  const mu = MU();
+  return `<div class="mt-imp" id="mt-imp">
+    <label class="dz mt-dz" for="mt-file"><b>Drop a .json or .csv file, or choose one</b><span>Matched by name and institution. New details are merged in; anything you've edited stays as you wrote it.</span>
+      <input type="file" id="mt-file" class="sr" accept=".json,.csv,application/json,text/csv"></label>
+    <div class="field mt16"><label for="mt-paste">Or paste JSON or CSV</label><textarea id="mt-paste" rows="4" spellcheck="false" placeholder='[{"name": "…", "title": "…", "institution": "…", "tags": ["…"], "experience": ["…"]}]'>${esc(mu.paste || "")}</textarea></div>
+    <details class="mt-schema"><summary>Fields Perl reads</summary><p class="hint">name (required), title, institution, tags, experience, links {faculty, linkedin, scholar}, how, relationship (mentor, PI, advisor, collaborator, peer), warmth (warm, cool, cold), lastContacted (YYYY-MM-DD), helpedWith, notes, notesPrivate (true unless you set false), specialties. In CSV, put several tags or experience lines in one cell separated by semicolons. Other columns are ignored.</p></details>
+    ${mu.impErr ? `<p class="cr-err" role="alert">${esc(mu.impErr)}</p>` : ""}
+    <div class="panel-foot"><span></span><span class="cr-btns"><button class="btn small" data-act="mt-import-cancel">Cancel</button><button class="btn primary small" data-act="mt-import-go">Import</button></span></div>
+  </div>`;
+}
+function fastBox() {
+  const mu = MU();
+  return `<form class="mt-fast" data-form="mt-fast" aria-label="Add a mentor">
+    <div class="field"><label for="mt-fast-name">Name</label><input type="text" id="mt-fast-name" required maxlength="80" autocomplete="off"></div>
+    <div class="field mt8"><label for="mt-fast-bio">Bio or profile text <span class="muted">(optional)</span></label><textarea id="mt-fast-bio" rows="4" aria-describedby="mt-fast-h" placeholder="Paste their faculty bio, LinkedIn About or a few lines you know"></textarea>
+      <span class="hint" id="mt-fast-h">${A.SAMPLE ? "With Claude on, the name and the text you paste are sent to Claude to fill in the card; you check it before relying on it." : "Perl splits it into title, institution, tags and experience in this browser."}</span></div>
+    <div class="panel-foot"><span></span><span class="cr-btns"><button type="button" class="btn small" data-act="mt-fast-cancel">Cancel</button><button type="submit" class="btn primary small" ${mu.fastBusy ? "disabled" : ""}>${mu.fastBusy ? "Filling in…" : "Add"}</button></span></div>
+  </form>`;
+}
+function dexPanel() {
+  const mu = MU(); const all = mentors().sort((a, b) => a.name.localeCompare(b.name)); const list = filtered(all);
+  const tagN = new Map(); for (const p of all) for (const t of new Set([...p.tags, ...p.specialties])) { const k = norm(t); const e = tagN.get(k) || { t, n: 0 }; e.n++; tagN.set(k, e); }
+  const top = [...tagN.values()].sort((a, b) => b.n - a.n || a.t.localeCompare(b.t)).slice(0, 10);
+  if (mu.tag && !top.some((x) => norm(x.t) === norm(mu.tag))) top.push({ t: mu.tag, n: 0 });
+  return `<section class="panel mt-dex" aria-labelledby="mt-h-dex">
+    <div class="panel-head"><h2 id="mt-h-dex">Rolodex <span class="count-chip">${all.length}</span></h2><span class="cr-btns">
+      <button class="btn small" data-act="mt-fast" aria-expanded="${mu.fast}">${ICON.plus}Add</button>
+      <button class="btn quiet small" data-act="mt-import" aria-expanded="${mu.imp}" aria-controls="mt-imp">Import</button>
+      ${all.length ? `<button class="btn quiet small" data-act="mt-export">Export</button>` : ""}</span></div>
+    ${mu.fast ? fastBox() : ""}${mu.imp ? importBox() : ""}
+    ${all.length ? `<div class="mt-filter"><label class="sr" for="mt-q">Search mentors</label><input type="search" id="mt-q" value="${esc(mu.q)}" placeholder="Search names, institutions, experience" autocomplete="off">
+      ${top.length ? `<div class="mt-tagbar" role="group" aria-label="Filter by tag">${top.map((x) => `<button class="chip" data-act="mt-tag" data-tag="${esc(x.t)}" aria-pressed="${norm(mu.tag) === norm(x.t)}">${esc(x.t)}</button>`).join("")}</div>` : ""}</div>
+      ${list.length ? `<ul class="mt-list">${list.map(mentorRow).join("")}</ul>` : `<p class="hint mt8" role="status">No mentors match${mu.tag ? ` the tag “${esc(mu.tag)}”` : ""}${mu.q ? ` “${esc(mu.q)}”` : ""}. <button class="btn quiet small" data-act="mt-clear">Clear filters</button></p>`}`
+    : mu.fast || mu.imp ? "" : `<div class="empty">Your rolodex is empty. Add a mentor by name (paste their bio to fill the card), or import a JSON or CSV list. People in your resume network appear here too.</div>`}
+  </section>`;
+}
+function resultHtml(r) {
+  const c = C(); const byId = new Map(c.network.map((p) => [p.id, p]));
+  const when = A.fmtShort(new Date(r.at));
+  return `<div class="mt-res">
+    <h3 class="mt-res-h" id="mt-h-res" tabindex="-1">For “${esc(clip(r.idea, 90))}”</h3>
+    <p class="mt-res-src">${r.source === "claude" ? "Ranked by Claude, checked against each mentor's card" : "Ranked in this browser by matching your idea to tags and experience; ties go to warmer, more recent contacts"} · ${esc(when)}</p>
+    ${r.note ? `<p class="cr-note" role="status">${esc(r.note)}</p>` : ""}
+    ${arr(r.dropped).length ? `<p class="mt-warn">Claude also named ${esc(andList(r.dropped))}, who ${r.dropped.length === 1 ? "isn't" : "aren't"} in your rolodex. Left out.</p>` : ""}
+    ${r.matches.length ? `<ol class="mt-matches">${r.matches.map((m, i) => {
+      const p = byId.get(m.id);
+      return `<li class="mt-m">
+        <div class="mt-m-t"><span class="mt-rank" aria-hidden="true">${i + 1}</span><b>${esc(p ? p.name : m.name)}</b>${p ? warmHtml(p.warmth) : ""}</div>
+        ${p && metaOf(p) ? `<p class="mt-meta">${esc(metaOf(p))}</p>` : ""}
+        ${m.why ? `<p class="mt-why">${esc(m.why)}</p>` : ""}
+        ${m.evidence.length ? `<ul class="mt-ev">${m.evidence.map((e) => `<li><span class="sr">From their card: </span>“${esc(e.t)}”${e.ok ? "" : ` <em>not on ${esc((p || m).name)}'s card</em>`}</li>`).join("")}</ul>` : ""}
+        ${m.flag === "ungrounded" ? `<p class="mt-flag">Not grounded: nothing Claude cited is on ${esc((p || m).name)}'s card. Check before you rely on this reason.</p>` : ""}
+        ${m.explain ? `<p class="mt-score">${esc(m.explain)}</p>` : ""}
+        ${m.ask ? `<p class="mt-ask"><b>Ask:</b> ${esc(m.ask)}</p>` : ""}
+        ${p ? `<div class="mt-m-acts"><button class="btn small" data-act="mt-draft" data-id="${esc(p.id)}" aria-label="Draft a note to ${esc(p.name)}">Draft a note</button><button class="btn quiet small" data-act="mt-touch" data-id="${esc(p.id)}" aria-label="Mark ${esc(p.name)} contacted today">Mark contacted</button><small class="muted">${esc(lastLabel(p))}</small></div>${draftBox(p.id, "mt")}` : `<p class="hint">No longer in your rolodex.</p>`}
+      </li>`; }).join("")}</ol>` : `<p class="hint">No mentor's tags or experience overlap with this idea yet. Add tags to your mentors, or describe the idea with the fields it touches (for example "wearables", "cardiology", "fundraising").</p>`}
+    ${r.order.length ? `<div class="mt-order"><h4 class="label">Who first</h4><ol class="mt-steps">${r.order.map((x) => `<li>${esc(x)}</li>`).join("")}</ol></div>` : ""}
+    ${r.gaps.length ? `<div class="mt-gaps"><h4 class="label">Gaps</h4><ul class="cr-bul gap">${r.gaps.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}
+  </div>`;
+}
+function findPanel() {
+  const mu = MU(); const c = C(); const asks = arr(c.asks); const cur = asks.find((a) => a.id === mu.cur);
+  return `<section class="panel mt-find" aria-labelledby="mt-h-find">
+    <div class="panel-head"><h2 id="mt-h-find">Who should I talk to?</h2></div>
+    <form data-form="mt-find" class="mt-ask-f">
+      <div class="field"><label for="mt-idea">Your idea or project</label>
+        <textarea id="mt-idea" rows="4" placeholder="e.g. A wearable that flags frailty in older patients after discharge, and I need a clinical partner and funding" aria-describedby="mt-privacy" ${mu.busy ? "readonly" : ""}>${esc(mu.idea)}</textarea></div>
+      ${mu.err ? `<p class="cr-err" role="alert">${esc(mu.err)}</p>` : ""}
+      ${mu.busy ? `<p class="cr-progress" id="mt-progress" role="status" aria-live="polite">${esc(mu.progress)}</p>` : ""}
+      <div class="panel-foot"><span class="hint mt-privacy" id="mt-privacy">${A.SAMPLE
+        ? "Your mentors stay in your Perl account. Only when you tap Find, Claude receives your idea and each mentor's name, role, institution, tags, experience, relationship, warmth and last contact, plus notes you've chosen to share. Nothing is ever sent to a mentor."
+        : "Your mentors stay in your Perl account. Find ranks them in this browser by matching your idea to their tags and experience; nothing leaves this device, and nothing is ever sent to a mentor."}</span>
+        <button type="submit" class="btn primary small" id="mt-go" ${mu.busy ? "disabled" : ""}>${mu.busy ? "Finding…" : "Find"}</button></div>
+    </form>
+    ${cur ? resultHtml(cur) : ""}
+    ${asks.length ? `<div class="mt-past"><div class="mt-past-h"><h3 class="label" id="mt-h-past">Past questions</h3><button class="btn quiet small" data-act="mt-past-clear">Clear</button></div>
+      <ul class="mt-past-l" aria-labelledby="mt-h-past">${asks.map((a) => `<li><button class="mt-past-b" data-act="mt-past" data-id="${esc(a.id)}" ${a.id === mu.cur ? 'aria-current="true"' : ""}><span>${esc(clip(a.idea, 110))}</span><small>${esc(A.fmtShort(new Date(a.at)))} · ${esc(a.matches.slice(0, 3).map((m) => m.name).join(", ") || "no matches")}</small></button></li>`).join("")}</ul></div>` : ""}
+  </section>`;
+}
+function vMentors() {
+  ensure();
+  return `<div id="cr-root" class="cr mt">
+    <div class="title-row"><div><h1>Career</h1><p class="finding">Your mentors in one place. Describe an idea or project and Perl tells you who to ask, what to ask them and who to start with.</p></div></div>
+    ${tabsHtml("mentors")}
+    <div class="mt-grid">${findPanel()}${dexPanel()}</div>
+  </div>`;
+}
+/* #mentors isn't one of the app's own sections: name the page and light up Career in the sidebar */
+document.addEventListener("perl:view", (e) => {
+  if (!e.detail || e.detail.view !== "mentors") return;
+  const tb = document.getElementById("tb-name"); if (tb) tb.textContent = "Career";
+  document.querySelectorAll('.nav a[href="#career"]').forEach((a) => a.setAttribute("aria-current", "page"));
+});
+const mtFind = (id) => mentors().find((p) => p.id === id);
+const MT_ACTS = {
+  "mt-fast": () => { const mu = MU(); mu.fast = !mu.fast; mu.imp = false; mu.edit = null; A.render(); A.refocus(mu.fast ? "#mt-fast-name" : '[data-act="mt-fast"]'); },
+  "mt-fast-cancel": () => { MU().fast = false; A.render(); A.refocus('[data-act="mt-fast"]'); },
+  "mt-import": () => { const mu = MU(); mu.imp = !mu.imp; mu.fast = false; mu.impErr = ""; A.render(); A.refocus(mu.imp ? "#mt-file" : '[data-act="mt-import"]'); },
+  "mt-import-cancel": () => { const mu = MU(); mu.imp = false; mu.impErr = ""; A.render(); A.refocus('[data-act="mt-import"]'); },
+  "mt-import-go": () => { const ta = $("#mt-paste"); doImport(ta ? ta.value : ""); },
+  "mt-export": () => { const list = exportMentors(); saveText(`perl-mentors-${A.isoD(A.today())}.json`, JSON.stringify(list, null, 2) + "\n", "application/json"); },
+  "mt-tag": (el) => { const mu = MU(); const t = el.dataset.tag || ""; mu.tag = norm(mu.tag) === norm(t) ? "" : t; A.render(); A.refocus(`.mt-tagbar [data-tag="${CSS.escape(t)}"]`); },
+  "mt-clear": () => { const mu = MU(); mu.q = ""; mu.tag = ""; A.render(); A.refocus("#mt-q"); },
+  "mt-edit": (el) => { const mu = MU(); mu.edit = el.dataset.id; mu.rm = null; mu.fast = false; A.render(); A.refocus("#mt-f-name"); },
+  "mt-edit-cancel": () => { const mu = MU(); const id = mu.edit; mu.edit = null; mu.rm = null; A.render(); A.refocus(`[data-act="mt-edit"][data-id="${CSS.escape(id || "")}"]`); },
+  "mt-rm": (el) => { MU().rm = el.dataset.id; A.render(); A.refocus('[data-act="mt-rm-no"]'); },
+  "mt-rm-no": () => { MU().rm = null; A.render(); A.refocus('[data-act="mt-rm"]'); },
+  "mt-rm-yes": (el) => {
+    const c = ensure(); const p = mtFind(el.dataset.id); if (!p) return; const mu = MU();
+    c.network = c.network.filter((x) => x.id !== p.id);
+    if (p.src === "resume") c.removed = [...new Set([...c.removed, nkey(p.name)])].slice(-300);
+    mu.edit = null; mu.rm = null; save(`Removed ${p.name}.`); A.refocus('[data-act="mt-fast"]');
+  },
+  "mt-touch": (el) => { const p = mtFind(el.dataset.id); if (!p) return; markEdited(p, { lastContact: A.isoD(A.today()) }); save(`${p.name}: contacted today.`); A.refocus(`[data-act="mt-touch"][data-id="${CSS.escape(p.id)}"]`); },
+  "mt-draft": (el) => {
+    const c = C(); const mu = MU(); const r = arr(c.asks).find((a) => a.id === mu.cur); const m = r && r.matches.find((x) => x.id === el.dataset.id);
+    draftFor(el.dataset.id, "mt", { idea: r ? r.idea : mu.idea, ask: m ? m.ask : "", evidence: m ? m.evidence.filter((e) => e.ok).map((e) => e.t) : [] });
+  },
+  "mt-past": (el) => { const c = C(); const mu = MU(); const r = arr(c.asks).find((a) => a.id === el.dataset.id); if (!r) return; mu.cur = r.id; mu.idea = r.idea; U().draft = null; A.render(); A.refocus("#mt-h-res"); },
+  "mt-past-clear": () => { const c = ensure(); c.asks = []; MU().cur = null; save("Past questions cleared."); A.refocus("#mt-idea"); }
+};
+
 /* ================= events ================= */
 function contactFromForm(f) {
   const fd = new FormData(f); const g = (k) => String(fd.get(k) || "").trim();
   return { name: clip(g("name"), 80), role: clip(g("role"), 70), org: clip(g("org"), 80), relation: RELS.includes(g("relation")) ? g("relation") : "collaborator",
-    specialties: [...new Set(g("specialties").split(/[,;]/).map(canonSpec).filter(Boolean))].slice(0, 6), note: g("note").slice(0, 1000), lastContact: A.parseD(g("lastContact")) ? g("lastContact") : "", warmth: ["warm", "cold"].includes(g("warmth")) ? g("warmth") : "" };
+    specialties: [...new Set(g("specialties").split(/[,;]/).map(canonSpec).filter(Boolean))].slice(0, 6), note: g("note").slice(0, 1000), lastContact: A.parseD(g("lastContact")) ? g("lastContact") : "", warmth: WARM_LABEL[g("warmth")] ? g("warmth") : "" };
 }
+let qTimer = 0;
 const find = (id) => { const c = C(); return c ? c.network.find((p) => p.id === id) : null; };
 window.PERL_MODULES.push({
-  views: { career: vCareer },
-  today: todayCard,
+  views: { career: vCareer, mentors: vMentors },
+  today: todayCard, todaySlot: "later",
   acts: {
     "cr-quick": () => runQuick(),
     "cr-analyze": () => runClaude(),
@@ -836,14 +1434,21 @@ window.PERL_MODULES.push({
     },
     "cr-spec-pick": (el) => { const c = ensure(); if (!SPEC_BY[el.dataset.spec]) return; c.spec = el.dataset.spec; A.persist(); if (el.dataset.nav) { A.go("career"); } else A.render(); setTimeout(() => { document.getElementById("cr-h-spec")?.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); document.getElementById("cr-spec")?.focus({ preventScroll: true }); }, 30); },
     "cr-go": (el) => A.go(el.dataset.to),
+    ...MT_ACTS,
     "cr-reset": () => { U().reset = true; A.render(); A.refocus('[data-act="cr-reset-no"]'); },
     "cr-reset-no": () => { U().reset = false; A.render(); A.refocus('[data-act="cr-reset"]'); },
-    "cr-reset-yes": () => { st().career = null; A.ui.career = null; save("Career profile deleted."); A.refocus("#cr-file"); }
+    "cr-reset-yes": () => {
+      const c = ensure();
+      const keep = c.network.filter((p) => isPerson(p) && (p.src === "user" || p.src === "import" || mineOf(p).size || p.tags.length || p.experience.length));
+      st().career = keep.length || c.asks.length ? { v: 1, profile: null, network: keep.map((p) => ({ ...p, evidence: p.src === "resume" ? "" : p.evidence })), removed: [], asks: c.asks, spec: "", file: "", importedAt: 0 } : null;
+      A.ui.career = null; save(keep.length ? `Career profile deleted. ${keep.length} ${keep.length === 1 ? "mentor stays" : "mentors stay"} in your rolodex.` : "Career profile deleted."); A.refocus("#cr-file");
+    },
   },
   on: {
     change(ev) {
       const t = ev.target;
       if (t.id === "cr-file") { if (t.files && t.files[0]) readFile(t.files[0]); return true; }
+      if (t.id === "mt-file") { if (t.files && t.files[0]) readImportFile(t.files[0]); t.value = ""; return true; }
       if (t.dataset && (t.dataset.crMe || t.dataset.crBm)) {
         const c = ensure();
         if (t.dataset.crMe) { const m = METRICS.find((x) => x.k === t.dataset.crMe); if (!m) return true; c.me = c.me || {}; c.me[m.k] = m.t === "yn" ? t.value : t.value === "" ? "" : Math.max(0, Math.min(m.t === "score" ? 300 : 200, Math.round(+t.value || 0))); }
@@ -851,36 +1456,51 @@ window.PERL_MODULES.push({
         A.persist(); setTimeout(() => A.render(), 0); return true; /* after focus moves on, so Tab lands where expected */
       }
       if (t.id === "cr-spec") { const c = ensure(); c.spec = SPEC_BY[t.value] ? t.value : ""; U().draft = null; A.persist(); A.render(); return true; }
-      return !!(t.closest && t.closest(".cr-form, #cr-text, #cr-draft-text"));
+      return !!(t.closest && t.closest(".cr-form, .mt-form, .mt-fast, #cr-text, #cr-draft-text, #mt-idea, #mt-paste, #mt-q"));
     },
     input(ev) {
       const t = ev.target;
       if (t.id === "cr-text") { U().text = t.value; return true; }
       if (t.id === "cr-draft-text") { const d = U().draft; if (d) d.text = t.value; return true; }
-      return !!(t.closest && t.closest(".cr-form"));
+      if (t.id === "mt-idea") { MU().idea = t.value; return true; }
+      if (t.id === "mt-paste") { MU().paste = t.value; return true; }
+      if (t.id === "mt-q") { MU().q = t.value; clearTimeout(qTimer); qTimer = setTimeout(() => A.render(), 120); return true; }
+      return !!(t.closest && t.closest(".cr-form, .mt-form, .mt-fast"));
     },
     submit(ev) {
-      const f = ev.target; if (f.dataset.form !== "cr-contact") return false;
+      const f = ev.target;
+      if (f.dataset.form === "mt-find") { runFind(); return true; }
+      if (f.dataset.form === "mt-fast") { fastAdd(f); return true; }
+      if (f.dataset.form === "mt-mentor") {
+        const v = mentorFromForm(f); const p = mtFind(f.dataset.id); const mu = MU(); if (!p) return true;
+        if (!v.name) { A.toast("Add a name."); $("#mt-f-name")?.focus(); return true; }
+        markEdited(p, v); mu.edit = null; mu.rm = null; save(`Saved ${p.name}.`); A.refocus(`[data-act="mt-edit"][data-id="${CSS.escape(p.id)}"]`);
+        return true;
+      }
+      if (f.dataset.form !== "cr-contact") return false;
       const v = contactFromForm(f); const c = ensure(); const u = U();
       if (!v.name) { A.toast("Add a name."); $("#cr-f-name")?.focus(); return true; }
-      if (f.dataset.id === "new") { const p = { id: uid(), src: "user", evidence: "", edited: true, ...v }; c.network.push(p); u.edit = null; save(`Added ${p.name}.`); A.refocus(`[data-act="cr-edit"][data-id="${CSS.escape(p.id)}"]`); }
-      else { const p = find(f.dataset.id); if (!p) return true; Object.assign(p, v, { edited: true }); u.edit = null; save(`Saved ${p.name}.`); A.refocus(`[data-act="cr-edit"][data-id="${CSS.escape(p.id)}"]`); }
+      if (f.dataset.id === "new") { const p = { id: uid(), src: "user", evidence: "", edited: true, tags: [], experience: [], links: {}, ...v, userFields: Object.keys(v).filter((k) => arr(v[k]).length || (typeof v[k] === "string" && v[k])) }; c.network.push(p); u.edit = null; save(`Added ${p.name}.`); A.refocus(`[data-act="cr-edit"][data-id="${CSS.escape(p.id)}"]`); }
+      else { const p = find(f.dataset.id); if (!p) return true; markEdited(p, v); u.edit = null; save(`Saved ${p.name}.`); A.refocus(`[data-act="cr-edit"][data-id="${CSS.escape(p.id)}"]`); }
       return true;
     }
   }
 });
 
 /* a resume dropped on the import box is read here, not as a clerkship schedule */
-const inDz = (ev) => ev.target && ev.target.closest && ev.target.closest(".cr-dz");
+const inDz = (ev) => ev.target && ev.target.closest && ev.target.closest(".cr-dz, .mt-dz");
 ["dragenter", "dragover", "dragleave", "drop"].forEach((type) => window.addEventListener(type, (ev) => {
   const dz = inDz(ev); if (!dz) return;
   ev.preventDefault(); ev.stopPropagation();
   document.documentElement.classList.remove("dropping");
   if (type === "dragenter" || type === "dragover") dz.classList.add("over"); else dz.classList.remove("over");
-  if (type === "drop" && ev.dataTransfer && ev.dataTransfer.files[0]) readFile(ev.dataTransfer.files[0]);
+  if (type === "drop" && ev.dataTransfer && ev.dataTransfer.files[0]) (dz.classList.contains("mt-dz") ? readImportFile : readFile)(ev.dataTransfer.files[0]);
 }, true));
 /* Claude becomes available a moment after load; redraw so Analyze appears */
-(async () => { try { const c = window.claude; if (c && typeof c.use === "function") await c.use("sample"); } catch { /* no Claude */ } setTimeout(() => { if (A.booted && A.ui.view === "career") A.render(); }, 0); })();
+(async () => { try { const c = window.claude; if (c && typeof c.use === "function") await c.use("sample"); } catch { /* no Claude */ } setTimeout(() => { if (A.booted && (A.ui.view === "career" || A.ui.view === "mentors")) A.render(); }, 0); })();
+/* Ctrl or Cmd + Enter asks from the idea box */
+document.addEventListener("keydown", (ev) => { if (ev.target && ev.target.id === "mt-idea" && ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); if (!MU().busy) runFind(); } });
 /* exposed for tests and for a future School-side use; read-only helpers, no data */
-window.PERL_CAREER = Object.freeze({ quickRead, parseReply, cleanAnalysis, countsFrom, specialties: () => SPECS.map((s) => s.n) });
+window.PERL_CAREER = Object.freeze({ quickRead, parseReply, cleanAnalysis, countsFrom, specialties: () => SPECS.map((s) => s.n),
+  parseCsv, fromImport, parseBio, findPrompt: (idea) => findPrompt(idea, mentors()), cleanFind: (o) => cleanFind(o, mentors()), rankLocal: (idea) => rankLocal(idea, mentors()) });
 })();
