@@ -1211,6 +1211,20 @@ body:where(:not(.dbf, .dbf *)){line-height: 1.5;}
 /* the sidebar's small print stays out of the way */
 .side-foot:where(:not(.dbf, .dbf *)),.side .fine:where(:not(.dbf, .dbf *)){font-size: 11px; opacity: .7;}
 
+/* Calm layer, part two: Today stops being a dashboard of cards. Content sits on the page with space between groups;
+   the headline is a sentence, not a billboard; the brightest thing on screen is no longer a button. */
+.home .hero:where(:not(.dbf, .dbf *)){background: transparent; padding: 8px 0 0; gap: 24px 56px;}
+.hero h1:where(:not(.dbf, .dbf *)){font-size: 32px; line-height: 40px; font-weight: 500; letter-spacing: -0.015em;}
+.hero-next:where(:not(.dbf, .dbf *)){background: transparent !important; border: 0 !important; padding: 0 !important;}
+.home .panel:where(:not(.dbf, .dbf *)){background: transparent; padding: 0;}
+.home .today-pair > *:where(:not(.dbf, .dbf *)){background: transparent;}
+.home:where(:not(.dbf, .dbf *)){gap: 48px;}
+.home .panel-head h2:where(:not(.dbf, .dbf *)),.hero-next .label:where(:not(.dbf, .dbf *)){font-size: 13px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: var(--muted);}
+.side-new:where(:not(.dbf, .dbf *)){background: transparent; color: var(--text); border: 1px solid var(--border);}
+.side-new:hover:where(:not(.dbf, .dbf *)){background: var(--raised); filter: none;}
+@media (max-width: 720px){ .hero h1:where(:not(.dbf, .dbf *)){font-size: 26px; line-height: 32px;} }
+.side-new kbd:where(:not(.dbf, .dbf *)){background: var(--sunk); color: var(--muted); border-color: var(--border);}
+
 /* Habits: the wheel, the heat map and the Today card. Every colour is a token, redefined for light mode.
    Habit colours --hb-c0…c6 keep ≥3:1 against --surface and --raised in both modes (dark ≥5.8:1, light ≥3.9:1). */
 :root{
@@ -2434,3 +2448,5 @@ body.locked{overflow:hidden}
 /* the selected day's entries in History: a title with no spaces in it wraps inside the card */
 .dbf .dayitem{grid-template-columns:minmax(0,1fr)}
 .dbf .dayitem > *{min-width:0;overflow-wrap:break-word}
+/* calm layer: on Today the debrief prompt sits on the page like its neighbours, not in a card */
+.dbf-today .hero{background:transparent;padding:0}
