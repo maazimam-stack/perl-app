@@ -1,0 +1,159 @@
+Access to Student Records
+Owner Department: Office of Academic Affairs
+Owner: CI MED Registrar
+Affected Department(s) or Parties: All Carle Illinois College of Medicine community members
+Effective Date: 02-21-18
+Revision Date: 02-03-26
+Next Review Date: 02-02-30
+Policy Number: APS-11
+I. Purpose: - Carle Illinois College of Medicine is committed to protecting the privacy and security
+of student data. The College maintains the confidentiality of student educational records while
+permitting access to administrators and faculty members who have a legitimate educational
+interest, as required by the Family Educational Rights and Privacy Act (FERPA) (20 U.S.C. § 1232g;
+34 CFR Part 99). The College also strives to ensure that students have timely and
+streamlined access to their educational records to support review and, when
+appropriate, requests for amendment. Records not maintained by Carle Illinois College
+of Medicine may be obtained by contacting the appropriate campus unit.
+II. Definitions & Principles:
+A. - For comprehensive definitions of the terms used in this policy, including student,
+educational records, university officials, and legitimate educational interest—refer to
+the University of Illinois at Champaign-Urbana Student Code § 3-602 and ASA-08 Family
+Educational Rights and Privacy Act of 1974 from the Campus Administrative Manual. B.
+Guidance regarding the circumstances under which student health records may be
+shared is provided in the Joint Guidance on the Application of the Family Educational
+Rights and Privacy Act (FERPA) And the Health Insurance Portability and Accountability
+Act of 1996 (HIPAA) To Student Health Records. At Carle Illinois College of Medicine,
+access to these records is strictly limited to the Carle Illinois Medical Records Officer,
+the Carle Illinois Registrar, and the individual student to whom the records pertain.
+III. Record Platforms and Security
+Carle Illinois College of Medicine maintains each student’s primary educational record within
+the Carle Illinois Records & Information Management System (CIRIMS). CIRIMS is a custom
+student information system secured by Shibboleth authentication and two‑factor
+authentication (2FA). Access to CIRIMS is role‑based, ensuring users only view information
+appropriate to their assigned responsibilities. Directory and academic history information
+within CIRIMS is imported from the University’s Banner system.
+CIRIMS provides authorized users access to directory information, academic history, class
+schedules, professionalism documentation, remediation plans, and advising notes. It serves as
+the official source of truth for all Carle Illinois student educational records.
+Student medical information is not considered part of the student’s educational record, but
+portions are considered a part of the student’s record to facilitate clinical placement. Carle
+Illinois utilizes Medicat, a web‑based application secured with single‑factor authentication, to
+track immunizations, health records, Basic Life Support (BLS) certification, and ten‑panel drug
+screening compliance. Access to information stored in the McKinley Health Center's Medicat
+System is restricted to the Carle Illinois Registrar and the Medical Records Officer.Carle Illinois
+may use additional systems that contain student data. All such systems are reviewed and
+approved through University of Illinois processes, in accordance with the (Campus
+Administrative Manual – Information Security) to ensure they meet required security
+standards, applicable laws, University policies, and contractual obligations. Security
+requirements vary based on the data classification assigned to each system under the
+(University of Illinois Cybersecurity Office – Data Classification) framework, and different
+security controls are applied accordingly. Note: Medical student mental health records are not
+governed by this policy. These records are not viewable by the Carle Illinois Registrar, faculty,
+or other staff. Access to these student mental health records are limited to those
+appropriately licensed individuals involved in the delivery of mental health care services with
+the student. Guidelines and protocol for student mental health records are addressed in
+SWH-4.
+IV. Access Levels:
+Access to student records across all systems and applications is determined by the user’s
+assigned administrative role within Carle Illinois..
+A. Primary Data Custodians: Primarily unit leaders who are responsible for the custody,
+storage, and implementation of policies related to student records and data access.
+B. Secondary Data Stewards: Delegates of primary data custodians who are responsible
+for the data content of a record.
+C. Data Viewers: Appropriate faculty and staff given access to extracted portions of
+student records.
+To ensure the privacy and security of our records, the Carle Illinois Registrar and primary data
+custodians will examine all data stewards on a yearly basis and adjust access to ensure proper
+access levels are in place.
+A. Academic Affairs Unit
+1. The Associate Dean for Academic Affairs, or an appointed designee, is the primary
+data custodian for learning management systems, assessment and evaluation
+systems.
+B. Admissions Unit
+1. The Director of Admissions, or an appointed designee, is the primary data
+custodian for admissions systems, such as Slate.
+C. Registrar Unit
+1. The Carle Illinois Registrar is the primary data custodian for all student record
+systems. Due to their medical education role and inherent educational records
+interest, they have access to all educational records within Carle Illinois.
+D. Technology Staff
+1. All staff within the Carle Illinois Technology Group have access to educational
+records explicitly for generating educational reports needed by staff and
+designing, maintaining, and building technology systems.
+E. Student Access
+1. Students do not receive direct system access to their student record. This
+restriction is in place to preserve data integrity and maintain system security.
+Additional guidance on a student’s right to obtain copies of their education
+records, and the conditions under which reproduction is permitted, is provided in
+the University Student Code § 3-604.c Regulations for Record Custodians.
+V. Policy:
+A. Students may request access to review their student record by submitting a written
+request to the Carle Illinois Registrar, either in person or by email at
+registrar@medicine.illinois.edu. All requests will be answered within 45 days, though
+responses typically occur sooner.
+B. Once the request is approved, the record will be extracted from the appropriate
+system(s). The student will then have up to 7 business days to review the
+materials in person with the Registrar or their designee.Faculty and staff, not
+already authorized, wishing to view a student’s record must adhere to the
+following process:
+1. Complete or have completed the Office of the Registrar’s FERPA Tutorial and Quiz
+within the past calendar year.
+2. Provide a written request to the Registrar specifying the student record they
+would like to review and provide a brief narrative outlining their legitimate
+educational interest in the record.
+3. Within 5 business days, the Carle Illinois Registrar will review and approve/deny
+the request.
+a. If a request is approved, a link will be e-mailed to the requestor with the
+extracted record in U of I Box. The requestor will have up to 7 business days
+to view the material before the view will expire, and a new request would
+need to be submitted. No material shared through this process can be
+downloaded, extracted, or saved in any manner by the requestor.
+b. If a request is denied, the requestor may appeal their request to the Carle
+Illinois College of Medicine Dean.
+C. Other individuals, such as parents, may gain access to a student record if a student
+submits a request in-person, in writing, granting the other individual access to their
+student record. This request will be reviewed and receive a response within 45 days,
+but typically in a shorter timeframe. If approved, this request will be valid for 7
+business days and all information will be viewable in person, at the Student Affairs
+office, with a member of the Registrar unit present.
+VI. Exceptions:
+A. The University of Illinois at Champaign-Urbana Student Code § 3-604.b outlines
+certain portions of a student record that are not available for student review as
+defined by FERPA. Refer to the student code for a complete listing of exemptions.
+VII. Record Corrections:
+A. As outlined in University of Illinois at Champaign-Urbana Student Code § 3-604.d,
+every reasonable effort should be made to verify or correct any information in the
+student educational record that is misleading, inaccurate, or otherwise in violation of
+the student’s privacy or other rights. If a dispute cannot be settled by the Carle Illinois
+Registrar, the student may request the Carle Illinois Dean, or an appointed designee,
+to resolve the matter. If the conflict cannot be resolved at that level, the student may
+request a hearing pursuant to § 3-607 before a FERPA Hearing Panel appointed by
+the University Registrar.
+VIII. Additional Resources:
+A. University of Illinois at Urbana-Champaign Student Code Article 3, Part 6
+1. § 3-601 Authorization and Responsibility for Policy Implementation
+2. § 3-602 Definitions
+3. § 3-603 Access to Student's Personally Identifiable Educational Records
+4. § 3-604 Regulations for Record Custodians
+5. § 3-605 Classification, Locations, and Custodians of Student Records
+6. § 3-606 Procedures for Student Access and Challenge
+7. § 3-607 Chancellor's Hearing Panel
+8. § 3-608 Disposal of Inactive Records
+9. § 3-609 Release of Student Information and Academic Records by the Office
+of the Registrar
+B. University of Illinois at Urbana-Champaign Campus Administrative Manual Student
+and Course Data Access
+C. University of Illinois at Urbana-Champaign Campus Administrative Manual
+Information Security
+D. University of Illinois at Urbana-Champaign Cybersecurity Office Data Classification
+E. The Family Educational Rights and Privacy Act (FERPA) (20 U.S.C. § 1232g; 34 CFR Part
+99)
+Governing Body: Executive Leadership Team
+History:
+Created: Office of Student Affairs, February 21, 2018
+Revised: Colin Van Orman, Registrar, April 1, 2021
+Revised: Colin Van Orman, Registrar, April 21, 2021
+Revised: Dorian Thomas, Registrar, February 3, 2026
+Approved By/Date:
+Executive Leadership Team, February 19, 2026
+Executive Leadership Team, March 6, 2026
