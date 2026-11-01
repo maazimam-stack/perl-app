@@ -23,7 +23,16 @@ const uid = () => "f" + Date.now().toString(36) + Math.random().toString(36).sli
 const iso = (d) => A.isoD(d);
 function rerender(sel) { A.render(); if (!sel || sel === "#") return; let el = null; try { el = document.querySelector(sel); } catch { return; } if (el) { if (el.tabIndex < 0 && !el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1"); el.focus({ preventScroll: true }); } }
 
-function offFor(f, d) { const k = iso(d); return (f.off || []).find((o) => o.from <= k && o.to >= k) || null; }
+/* a week off can repeat: "every 4 weeks" is how students rotate out of clinic for their QI project */
+function offFor(f, d) {
+  const k = iso(d);
+  return (f.off || []).find((o) => {
+    if (o.from <= k && o.to >= k) return true;
+    const n = Number(o.every) || 0; if (n < 2 || k < o.from) return false;
+    const a = A.parseD(o.from), len = A.diffDays(a, A.parseD(o.to)), off = A.diffDays(a, d);
+    return off % (n * 7) <= len;
+  }) || null;
+}
 /* every clinic night in the window, each marked on (clinic), off (a QI/SDOH/off week) or skipped (a one-off) */
 function nights(f) {
   const a = A.parseD(f.from), b = A.parseD(f.to); if (!a || !b || b < a) return [];
@@ -85,11 +94,12 @@ function panel() {
     <div class="panel-head"><h2 id="h-fm">FMCC night clinic</h2><button class="link" data-act="fm-edit">Edit</button></div>
     <p class="fm-sum"><b>${esc(DAYS[f.day])}s · Team ${esc(f.team)}</b> · ${esc(A.fmtShort(A.parseD(f.from)))} to ${esc(A.fmtShort(A.parseD(f.to)))} · ${A.plural(total, "clinic night")}${nx ? ` · next ${esc(A.fmtShort(nx.date))}` : ""}</p>
     <h3 class="fm-h">Weeks off clinic</h3>
-    ${offs.length ? `<ul class="list fm-offs">${offs.map((o) => `<li><div class="what"><span class="t">${esc(KINDS[o.kind] || "Off")}</span><small class="num">${esc(A.fmtShort(A.parseD(o.from)))} – ${esc(A.fmtShort(A.parseD(o.to)))}</small></div><div class="tail"><button class="btn quiet small" data-act="fm-off-rm" data-id="${esc(o.id)}" aria-label="Remove ${esc(KINDS[o.kind] || "off")} week starting ${esc(A.fmtShort(A.parseD(o.from)))}">Remove</button></div></li>`).join("")}</ul>` : `<p class="hint">None yet. Add your QI and SDOH weeks from the FMCC Canvas page.</p>`}
+    ${offs.length ? `<ul class="list fm-offs">${offs.map((o) => `<li><div class="what"><span class="t">${esc(KINDS[o.kind] || "Off")}</span><small class="num">${esc(A.fmtShort(A.parseD(o.from)))} – ${esc(A.fmtShort(A.parseD(o.to)))}${Number(o.every) >= 2 ? ` · then every ${Number(o.every)} weeks` : ""}</small></div><div class="tail"><button class="btn quiet small" data-act="fm-off-rm" data-id="${esc(o.id)}" aria-label="Remove ${esc(KINDS[o.kind] || "off")} week starting ${esc(A.fmtShort(A.parseD(o.from)))}">Remove</button></div></li>`).join("")}</ul>` : `<p class="hint">None yet. Add your QI and SDOH weeks from the FMCC Canvas page.</p>`}
     <form class="fm-form fm-add" data-form="fm-off">
       <div class="field"><label for="fm-o-kind">Week</label><select id="fm-o-kind"><option value="QI">QI project week</option><option value="SDOH">SDOH week</option><option value="Off">Other time off</option></select></div>
       <div class="field"><label for="fm-o-from">Starts</label><input type="date" id="fm-o-from" required></div>
       <div class="field"><label for="fm-o-to">Ends</label><input type="date" id="fm-o-to"></div>
+      <div class="field fm-rep"><label for="fm-o-every">Repeats</label><select id="fm-o-every"><option value="0">Just this once</option><option value="4">Every 4 weeks</option></select></div>
       <div class="fm-form-act"><button class="btn small" type="submit">Add week off</button></div>
       ${u.addErr ? `<p class="err" role="alert">${esc(u.addErr)}</p>` : ""}
     </form>
@@ -120,13 +130,14 @@ const on = {
     }
     if (form.dataset.form === "fm-off") {
       const f = doc(); if (!f) return true;
-      const kind = $v("#fm-o-kind"); let from = $v("#fm-o-from"), to = $v("#fm-o-to");
+      const kind = $v("#fm-o-kind"); let from = $v("#fm-o-from"), to = $v("#fm-o-to"); const every = Number($v("#fm-o-every")) === 4 ? 4 : 0;
       if (!A.parseD(from)) { u.addErr = "Pick the week's start date."; rerender("#fm-o-from"); return true; }
       if (!to) [from, to] = weekOf(from);
       else if (to < from) { u.addErr = "The end date is before the start."; rerender("#fm-o-to"); return true; }
+      if (every && A.diffDays(A.parseD(from), A.parseD(to)) >= every * 7) { u.addErr = "A repeating week off has to be shorter than the repeat."; rerender("#fm-o-to"); return true; }
       if ((f.off || []).some((o) => o.from <= to && o.to >= from)) { u.addErr = "That overlaps a week you already added."; rerender("#fm-o-from"); return true; }
-      f.off = (f.off || []).concat([{ id: uid(), from, to, kind: KINDS[kind] ? kind : "Off" }]); u.addErr = ""; save(); rerender("#fm-o-from");
-      A.toast(`${KINDS[kind] || "Week off"} added: ${A.fmtShort(A.parseD(from))} to ${A.fmtShort(A.parseD(to))}. No night clinic that week.`);
+      f.off = (f.off || []).concat([{ id: uid(), from, to, kind: KINDS[kind] ? kind : "Off", every }]); u.addErr = ""; save(); rerender("#fm-o-from");
+      A.toast(`${KINDS[kind] || "Week off"} added: ${A.fmtShort(A.parseD(from))} to ${A.fmtShort(A.parseD(to))}${every ? `, then every ${every} weeks` : ""}. No night clinic then.`);
       return true;
     }
     return false;
