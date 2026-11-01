@@ -2310,6 +2310,7 @@ function accountPanel() {
     <ul class="list two">
       ${installRow()}
       <li><div class="what"><span class="t">Claude</span><small>${ai ? "Allowed. Cleanup, interview drafts and policy answers send the text involved to Claude, made by Anthropic." : "Off. You review debriefs yourself, and Ask uses keyword search."}</small></div><div class="tail"><button class="btn small" data-act="ai-toggle">${ai ? "Turn off" : "Allow"}</button></div></li>
+      <li><div class="what"><span class="t">Password</span><small>Sign in with your email and this password on any device; no email link needed. At least 8 characters.</small></div><div class="tail acct-pw"><label class="sr" for="acct-pw">New password</label><input type="password" id="acct-pw" autocomplete="new-password" minlength="8" placeholder="New password"><button class="btn small" data-act="set-pw">Save password</button></div></li>
       <li><div class="what"><span class="t">Sign out</span><small>Your plan and journal stay in your account.</small></div><div class="tail"><button class="btn small" data-act="sign-out">Sign out</button></div></li>
       <li><div class="what"><span class="t">Delete account</span><small>Deletes your sign-in, plan, checklist and every journal entry. This can't be undone.</small></div><div class="tail">${ui.delAcct ? `<button class="btn small" data-act="del-acct-cancel">Keep</button><button class="btn small" style="color:var(--negative);border-color:var(--negative)" data-act="del-acct-yes">Delete everything</button>` : `<button class="btn small" style="color:var(--negative)" data-act="del-acct">Delete account</button>`}</div></li>
     </ul>
@@ -2477,6 +2478,9 @@ document.addEventListener("click", (ev) => {
     case "reauth": if (window.PERL_ACCOUNT && window.PERL_ACCOUNT.reauth) window.PERL_ACCOUNT.reauth(); break;
     case "ai-toggle": if (window.PERL_ACCOUNT) { window.PERL_ACCOUNT.setAiAllowed(!window.PERL_ACCOUNT.aiAllowed()); render(); toast(window.PERL_ACCOUNT.aiAllowed() ? "Claude allowed." : "Claude turned off."); } break;
     case "sign-out": if (window.PERL_ACCOUNT) window.PERL_ACCOUNT.signOut(); break;
+    case "set-pw": { const el = document.getElementById("acct-pw"); if (!window.PERL_ACCOUNT || !el) break; const v = el.value;
+      if (v.length < 8) { toast("Use at least 8 characters."); el.focus(); break; }
+      window.PERL_ACCOUNT.setPassword(v).then(() => { el.value = ""; toast("Password saved. Sign in with your email and this password from now on."); }).catch((e) => { toast((e && e.message) || "Couldn't save the password."); el.focus(); }); break; }
     case "del-acct": ui.delAcct = true; render(); refocus('[data-act="del-acct-cancel"]'); break;
     case "del-acct-cancel": ui.delAcct = false; render(); break;
     case "del-acct-yes": if (window.PERL_ACCOUNT) window.PERL_ACCOUNT.deleteAccount().catch((e) => toast((e && e.message) || "Couldn't delete your account.")); break;

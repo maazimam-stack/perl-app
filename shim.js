@@ -265,6 +265,20 @@
       signingOut = true; forgetLocalCopy(); if (client) await client.auth.signOut(); forgetLocalCopy(); location.hash = ""; location.reload();
     },
     reauth: () => expired(true),
+    /* set or change the password while signed in, so a used-up email link never locks anyone out again */
+    async setPassword(pw) {
+      if (typeof pw !== "string" || pw.length < 8) throw err("invalid_argument", "Use at least 8 characters.");
+      if (MEMORY) return true;
+      const { error } = await client.auth.updateUser({ password: pw });
+      if (error) {
+        const m = String(error.message || "");
+        if (/different from the old/i.test(m)) return true;   /* already that password: nothing to change */
+        if (/weak|pwned|leaked|characters/i.test(m)) throw err("invalid_argument", m);
+        if (/session|jwt|auth/i.test(m)) throw err("session_expired", "Sign in again, then set your password.");
+        throw err("unavailable", "Couldn't save the password. Try again.");
+      }
+      return true;
+    },
     async deleteAccount() {
       if (MEMORY) { lsSet("perl.test.db", "{}"); location.reload(); return; }
       const { data: { session: s } } = await client.auth.getSession(); if (!s) throw err("session_expired", "Sign in again first.");

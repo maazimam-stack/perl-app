@@ -1180,6 +1180,9 @@ code:where(:not(.dbf, .dbf *)),.mono:where(:not(.dbf, .dbf *)){font-family: var(
 .install-how:where(:not(.dbf, .dbf *)){display: block; margin-top: 2px;}
 .facts .fact .t:where(:not(.dbf, .dbf *)){display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;}
 
+.acct-pw:where(:not(.dbf, .dbf *)){display: flex; flex-wrap: wrap; gap: 8px; align-items: center;}
+.acct-pw input:where(:not(.dbf, .dbf *)){min-width: 0; width: 200px; max-width: 100%;}
+
 /* Habits: the wheel, the heat map and the Today card. Every colour is a token, redefined for light mode.
    Habit colours --hb-c0…c6 keep ≥3:1 against --surface and --raised in both modes (dark ≥5.8:1, light ≥3.9:1). */
 :root{
