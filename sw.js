@@ -1,7 +1,7 @@
 /* Offline shell for Charted: network first, the last good copy when offline.
    Only the app's own code and static files are cached. Nothing from /api/ and nothing from Supabase (your data) is stored here. */
-const CACHE = "perl-af8979f1592a";
-const SHELL = ["./", "boot.js", "shim.js", "shim.css", "vendor/supabase.js", "app/styles.css", "app/data.js", "app/audit.js", "app/sched.js", "app/store.js", "app/app.js", "app/habits.js", "app/career.js", "app/connect.js", "app/debrief.js", "manifest.webmanifest", "config.json", "favicon.svg", "icon-192.png", "icon-512.png", "vendor/pdf.worker.min.js"];
+const CACHE = "perl-a84396fb41e2";
+const SHELL = ["./", "boot.js", "shim.js", "shim.css", "vendor/supabase.js", "app/styles.css", "app/data.js", "app/audit.js", "app/sched.js", "app/store.js", "app/app.js", "app/habits.js", "app/career.js", "app/connect.js", "app/fmcc.js", "app/projects.js", "app/debrief.js", "manifest.webmanifest", "config.json", "favicon.svg", "icon-192.png", "icon-512.png", "vendor/pdf.worker.min.js"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith("perl-") && k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", (e) => {

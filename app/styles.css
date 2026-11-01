@@ -1781,6 +1781,46 @@ body:where(:not(.dbf, .dbf *)){line-height: 1.5;}
 .cn-health p{margin: 0; font-size: 13px; line-height: 19px; color: var(--text-2); max-width: 70ch;}
 .cn-health-act{display: flex; gap: 8px; flex-wrap: wrap;}
 
+/* Projects (projects.js) and FMCC night clinic (fmcc.js). Shared tokens only, so dark and light follow the student's choice.
+   Calm by default: rows on rules, one open editor at a time. */
+.pj-list{list-style: none; margin: 0; padding: 0;}
+.pj-row{border-bottom: 1px solid var(--rule);}
+.pj-row:last-child{border-bottom: 0;}
+.pj-head{display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; width: 100%; padding: 16px 4px; border: 0; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer;}
+.pj-head:focus-visible{outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px;}
+.pj-t{font-size: 16px; font-weight: 500; min-width: 0; overflow-wrap: anywhere;}
+.pj-meta{display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--muted); font-size: 13px;}
+.pj-tag{padding: 0 7px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-ink); font-weight: 500;}
+.pj-ed{display: grid; gap: 14px; padding: 4px 4px 20px;}
+.pj-grid{display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px;}
+.pj-ed textarea, .pj-ed input[type=text]{width: 100%; min-width: 0;}
+.pj-h{margin: 6px 0 0; font-size: 13px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: var(--muted);}
+.pj-ms{list-style: none; margin: 0; padding: 0; display: grid; gap: 8px;}
+.pj-ms li{display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 8px; align-items: center;}
+.pj-chk{display: inline-flex; align-items: center; min-width: 24px; min-height: 24px;}
+.pj-add{display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center;}
+.pj-foot{display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end;}
+.pj-foot span{color: var(--text-2); margin-right: auto;}
+.btn.danger{color: var(--negative); border-color: var(--negative);}
+@media (max-width: 640px){
+  .pj-grid{grid-template-columns: minmax(0, 1fr);}
+  .pj-ms li{grid-template-columns: auto minmax(0, 1fr); }
+  .pj-ms li input[type=date], .pj-ms li .btn{grid-column: 2;}
+  .pj-add{grid-template-columns: minmax(0, 1fr);}
+}
+
+/* FMCC */
+.fm-sum{margin: 0 0 12px; color: var(--text-2);}
+.fm-sum b{color: var(--text); font-weight: 500;}
+.fm-h{margin: 8px 0 6px; font-size: 13px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: var(--muted);}
+.fm-form{display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end; margin-top: 8px;}
+.fm-form .field{min-width: 140px; flex: 1 1 140px;}
+.fm-form .err{flex-basis: 100%; margin: 0;}
+.fm-form-act{display: flex; gap: 8px;}
+.fm-today{display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--border);}
+.fm-today h2{margin: 0 0 2px; font-size: 15px; font-weight: 500;}
+.fm-today p{margin: 0; font-size: 13px; color: var(--text-2);}
+
 /* SOURCE OF TRUTH. Originally generated once by tools/port_debrief.py from handoff/perl/, then edited by hand; edit this file directly. The port script is retired and refuses to run, so nothing regenerates or overwrites it. */
 /* Debrief space: Perl's components on the merged dark palette. Gold is retired: progress and completion take the Debrief accent.
    Coral becomes the shared attention amber; red stays for what's wrong. Rotation tints are low-chroma so nothing shouts. */

@@ -424,7 +424,7 @@ function closeOverlay(id){
 }
 document.addEventListener("click", e => {
   const c = e.target.closest("[data-close]"); if (c) { closeOverlay(c.dataset.close); return; }
-  const a = e.target.closest("[data-act]"); if (a){ if (a.dataset.act === "new") openComposer(); else if (a.dataset.act === "find") openPalette(); return; }
+  const a = e.target.closest("[data-act]"); if (a){ if (a.dataset.act === "new") openComposer(a.dataset.rotation ? {date:a.dataset.date, rotation:a.dataset.rotation} : {}); else if (a.dataset.act === "find") openPalette(); return; }
   const g = e.target.closest("[data-go]"); if (g) go(g.dataset.go);
 });
 
@@ -470,6 +470,8 @@ function openComposer(opts = {}){
   if (opts.date){ state.compose.date = opts.date; state.compose.rotation = null; }
   else if (!pad.value.trim() && !state.compose.review){ state.compose.date = todayKey(); state.compose.rotation = null; }
   if (!state.compose.date) state.compose.date = todayKey();
+  /* a prompt elsewhere (the FMCC clinic-night card) can name the setting; the student can still change it in the composer */
+  if (opts.rotation && typeof opts.rotation === "string" && !state.compose.review) state.compose.rotation = opts.rotation.slice(0, 60);
   state.compose.step = state.compose.review ? "review" : "write";
   showOverlay("composer");
   renderComposer();

@@ -224,6 +224,7 @@ const codeBtn = (c) => getP(c) ? `<button class="code-btn" data-act="open-policy
 const STATUS = { done: ["Done", "pos"], inprog: ["In progress", "info"], todo: ["Not yet", ""], na: ["Waived", ""], unknown: ["Unknown", "warn"] };
 const SEV = { conflict: ["Conflict", "neg"], ambiguity: ["Unclear", "warn"], gap: ["Missing", "warn"], access: ["Access", ""], typo: ["Error", ""] };
 const ICON = {
+  projects: '<path d="M2.5 5.5a1.5 1.5 0 0 1 1.5-1.5h3l1.5 1.5H14a1.5 1.5 0 0 1 1.5 1.5v6.5A1.5 1.5 0 0 1 14 15H4a1.5 1.5 0 0 1-1.5-1.5z"/><path d="M6 9.5h6"/>',
   today: '<circle cx="9" cy="9" r="6.5"/><path d="M9 5.5V9l2.5 1.5"/>',
   calendar: '<rect x="2.5" y="3.5" width="13" height="12" rx="2.5"/><path d="M2.5 7.5h13M6 2v3M12 2v3"/>',
   rotations: '<path d="M2.5 5h8M2.5 9h13M2.5 13h6"/><circle cx="13" cy="5" r="1.6"/><circle cx="11" cy="13" r="1.6"/>',
@@ -255,10 +256,11 @@ const SECTIONS = [
   { k: "debrief", l: "Debrief", home: "journal", sp: "debrief", pages: [["journal", "Journal"], ["history", "History"], ["vault", "Residency vault"], ["mspe", "MSPE"]] },
   { k: "school", l: "School", home: "progress", sp: "school", pages: [["progress", "Progress"], ["rotations", "Rotations"], ["schedule", "Schedule"], ["policies", "Policies"], ["ask", "Ask the policies"], ["health", "Policy health"]] },
   { k: "habits", l: "Habits", home: "habits", pages: [["habits", "Habits"]] },
-  { k: "career", l: "Career", home: "career", pages: [["career", "Career"]] }
+  { k: "career", l: "Career", home: "career", pages: [["career", "Career"]] },
+  { k: "projects", l: "Projects", home: "projects", pages: [["projects", "Projects"]] }
 ];
 const SETTINGS_PAGES = [["profile", "Profile and settings"], ["connect", "Connections"], ["dsettings", "Debrief settings"]];
-const TITLES = { offline: "Can't reach your plan", today: "Today", calendar: "Calendar", rotations: "Rotations", progress: "Progress", policies: "Policies", ask: "Ask the policies", health: "Policy health", profile: "Profile and settings", schedule: "Schedule", setup: "Set up", journal: "Journal", history: "History", vault: "Residency vault", mspe: "MSPE", dsettings: "Debrief settings", boot: "Charted", habits: "Habits", career: "Career", connect: "Connections" };
+const TITLES = { offline: "Can't reach your plan", today: "Today", calendar: "Calendar", rotations: "Rotations", progress: "Progress", policies: "Policies", ask: "Ask the policies", health: "Policy health", profile: "Profile and settings", schedule: "Schedule", setup: "Set up", journal: "Journal", history: "History", vault: "Residency vault", mspe: "MSPE", dsettings: "Debrief settings", boot: "Charted", habits: "Habits", career: "Career", connect: "Connections", projects: "Projects" };
 const SPACE = { journal: "debrief", history: "debrief", vault: "debrief", mspe: "debrief", dsettings: "debrief", progress: "school", rotations: "school", policies: "school", ask: "school", health: "school", schedule: "school" };
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");
 const KBD = IS_MAC ? "⌘K" : "Ctrl K";
@@ -476,7 +478,9 @@ function allDated() {
     const hol = HOLIDAY_RE.test(e.l);
     return { date: parseD(e.d), label: e.l, rule: e.src === "Calendar" ? "AY2026-27 academic calendar" : "", code: e.src === "Calendar" ? "" : e.src, w: hol ? 0 : /deadline|due|application/i.test(e.l) ? 3 : 1, holiday: hol };
   });
-  const feeds = typeof window.PERL_FEEDS === "function" ? window.PERL_FEEDS() : [];   /* connect.js: Outlook, Canvas and .ics events; read-only, never checked off */
+  const feeds = typeof window.PERL_FEEDS === "function" ? window.PERL_FEEDS() : [];
+  /* feature modules' own dated items (FMCC night clinic, project milestones); read-only here, like feeds */
+  for (const f of window.PERL_DATED || []) { try { feeds.push(...(f() || [])); } catch { /* a module's bad item never breaks the plan */ } }   /* connect.js: Outlook, Canvas and .ics events; read-only, never checked off */
   return [...mine, ...rotationItems(), ...schedItems(), ...cal, ...feeds].filter((x) => x.date).map((x) => ({ ...x, done: !x.feed && !!(state.done && state.done[itemKey(x)]) }));
 }
 function upcoming(limit) {
@@ -1214,7 +1218,7 @@ function heroHtml() {
 }
 function agendaGroups() {
   const t = today(); const cur = currentRotation(); const nx = nextAction(cur);
-  const items = allDated().filter((x) => !x.done && !(nx && itemKey(x) === itemKey(nx))).sort((a, b) => a.date - b.date || (b.w || 0) - (a.w || 0));
+  const items = allDated().filter((x) => !x.done && !x.routine && !(nx && itemKey(x) === itemKey(nx))).sort((a, b) => a.date - b.date || (b.w || 0) - (a.w || 0));
   return [
     ["Not checked off", items.filter((x) => itemState(x) === "slipped"), "passed in the last 14 days"],
     [`Next ${SOON} days`, items.filter((x) => x.date >= t && x.date <= addDays(t, SOON)), `to ${fmtShort(addDays(t, SOON))}`],
@@ -2271,6 +2275,7 @@ function vSchedule() {
   return `<div class="title-row"><div><h1>Schedule</h1><p class="finding">One schedule feeds Today, the Calendar, Rotations and your Debrief journal. Pick your track, then drop in each clerkship's weekly schedule as it comes.</p></div><div class="title-actions"><button class="btn small primary" data-act="open-audit">Import degree audit</button><a class="btn small" href="#rotations">Edit rotations</a></div></div>
   ${ui.wiz ? wizPanel() : ""}
   ${state.profile.track === "custom" ? customTrackPanel() + `<details class="panel tk-std"><summary>Standard AY2026-27 tracks</summary>${trackPanel()}</details>` : trackPanel() + `<p class="hint">Off-cycle, swapped a block, or finishing with the next class? <button class="link" data-act="wiz-open">Build my year</button> from your track in a few clicks, or <button class="link" data-act="make-custom">make a custom track</button> and set every date yourself.</p>`}
+  ${window.PERL_FMCC ? window.PERL_FMCC.panel() : ""}
   ${dropPanel()}`;
 }
 function vNone() { return ""; } /* Debrief views are drawn by the Debrief space into #dbf-views */
