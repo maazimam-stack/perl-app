@@ -1222,9 +1222,9 @@ function agendaGroups() {
   ].filter(([, xs]) => xs.length);
 }
 function comingUpPanel() {
-  const xs = agendaGroups().flatMap(([, x]) => x).slice(0, 5);
+  const all = agendaGroups().flatMap(([, x]) => x); const xs = all.slice(0, 3); const more = all.length - xs.length;
   return `<section class="panel agenda coming" aria-labelledby="h-agenda">
-    <div class="panel-head"><h2 id="h-agenda">Coming up</h2><a class="link" href="#calendar">Calendar</a></div>
+    <div class="panel-head"><h2 id="h-agenda">Coming up</h2><a class="link" href="#calendar">${more > 0 ? `${more} more in Calendar` : "Calendar"}</a></div>
     ${xs.length ? `<ul class="rows">${xs.map((x) => dateRow(x)).join("")}</ul>` : `<div class="empty">Nothing else dated in the next nine weeks. <a class="link" href="#rotations">Add your rotations</a> to see the deadlines they set off.</div>`}
   </section>`;
 }
