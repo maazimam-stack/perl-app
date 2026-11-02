@@ -1821,6 +1821,52 @@ body:where(:not(.dbf, .dbf *)){line-height: 1.5;}
 .fm-today h2{margin: 0 0 2px; font-size: 15px; font-weight: 500;}
 .fm-today p{margin: 0; font-size: 13px; color: var(--text-2);}
 
+/* Away rotations (hosts.js). Shared tokens only, so dark and light follow the student's choice. Rows on rules, one open at a time. */
+.aw-p{margin: 0 0 14px; color: var(--text-2); max-width: 70ch;}
+.aw-imp-row{display: flex; flex-wrap: wrap; gap: 8px; align-items: center;}
+.aw-tools{display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 180px) minmax(0, 200px); gap: 8px; margin-bottom: 12px;}
+.aw-seg{margin-bottom: 4px;}
+.aw-seg .num{margin-left: 4px; color: var(--muted); font-weight: 400;}
+.aw-count{margin: 10px 4px 4px; color: var(--muted); font-size: 12px;}
+.aw-list, .aw-sl, .aw-iss{list-style: none; margin: 0; padding: 0;}
+.aw-row{border-bottom: 1px solid var(--rule);}
+.aw-row:last-child{border-bottom: 0;}
+.aw-h{display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; width: 100%; padding: 14px 4px; border: 0; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer;}
+.aw-h:focus-visible, .aw-sl-h:focus-visible{outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px;}
+.aw-t{min-width: 0; flex: 1 1 280px; display: grid; gap: 2px;}
+.aw-t b{font-weight: 500; overflow-wrap: anywhere;}
+.aw-t small{color: var(--muted); font-size: 12px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
+.aw-meta{display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 12px;}
+.aw-d{display: grid; gap: 14px; padding: 2px 4px 20px;}
+.aw-facts{display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 20px; margin: 0;}
+.aw-facts dt{color: var(--muted); font-size: 12px; line-height: 16px;}
+.aw-facts dd{margin: 2px 0 0; font-size: 13px; line-height: 18px; overflow-wrap: anywhere;}
+.aw-note{margin: 0; padding: 10px 12px; border-radius: var(--r-row); background: var(--raised); color: var(--text-2); font-size: 13px; line-height: 19px;}
+.aw-contact{margin: 0; font-size: 13px; line-height: 19px; overflow-wrap: anywhere;}
+.aw-contact a{color: var(--text);}
+.aw-plan{display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end;}
+.aw-plan .field{min-width: 150px; flex: 0 1 180px;}
+.aw-ask{margin: 0; font-size: 13px; color: var(--text-2);}
+.aw-ask b{color: var(--text); font-weight: 500;}
+.aw-iss{display: grid; gap: 6px;}
+.aw-iss li{display: flex; align-items: baseline; gap: 8px; font-size: 13px; line-height: 19px; color: var(--text-2);}
+.aw-iss li .dot{transform: translateY(-1px);}
+.aw-iss li.aw-neg span:not(.dot){color: var(--red-text);}
+.aw-iss li.aw-warn span:not(.dot){color: var(--amber-text);}
+.aw-sl{display: grid;}
+.aw-sl > li{display: grid; gap: 6px; padding: 12px 4px; border-bottom: 1px solid var(--rule);}
+.aw-sl > li:last-child{border-bottom: 0; padding-bottom: 0;}
+.aw-sl > li:first-child{padding-top: 0;}
+.aw-sl-h{display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 0; border: 0; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer;}
+.aw-sl-h b{font-weight: 500;}
+.aw-sl-h:hover b{text-decoration: underline; text-decoration-color: var(--control); text-underline-offset: 3px;}
+.aw-sl-m{display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; color: var(--muted); font-size: 13px;}
+.aw-sl-m b{color: var(--text); font-weight: 500;}
+@media (max-width: 640px){
+  .aw-tools{grid-template-columns: minmax(0, 1fr);}
+  .aw-facts{grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);}
+}
+
 /* SOURCE OF TRUTH. Originally generated once by tools/port_debrief.py from handoff/perl/, then edited by hand; edit this file directly. The port script is retired and refuses to run, so nothing regenerates or overwrites it. */
 /* Debrief space: Perl's components on the merged dark palette. Gold is retired: progress and completion take the Debrief accent.
    Coral becomes the shared attention amber; red stays for what's wrong. Rotation tints are low-chroma so nothing shouts. */

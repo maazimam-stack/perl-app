@@ -254,14 +254,14 @@ const SECTIONS = [
   { k: "today", l: "Today", home: "today", pages: [["today", "Today"]] },
   { k: "calendar", l: "Calendar", home: "calendar", pages: [["calendar", "Calendar"]] },
   { k: "debrief", l: "Debrief", home: "journal", sp: "debrief", pages: [["journal", "Journal"], ["history", "History"], ["vault", "Residency vault"], ["mspe", "MSPE"]] },
-  { k: "school", l: "School", home: "progress", sp: "school", pages: [["progress", "Progress"], ["rotations", "Rotations"], ["schedule", "Schedule"], ["policies", "Policies"], ["ask", "Ask the policies"], ["health", "Policy health"]] },
+  { k: "school", l: "School", home: "progress", sp: "school", pages: [["progress", "Progress"], ["rotations", "Rotations"], ["aways", "Away rotations"], ["schedule", "Schedule"], ["policies", "Policies"], ["ask", "Ask the policies"], ["health", "Policy health"]] },
   { k: "habits", l: "Habits", home: "habits", pages: [["habits", "Habits"]] },
   { k: "career", l: "Career", home: "career", pages: [["career", "Career"]] },
   { k: "projects", l: "Projects", home: "projects", pages: [["projects", "Projects"]] }
 ];
 const SETTINGS_PAGES = [["profile", "Profile and settings"], ["connect", "Connections"], ["dsettings", "Debrief settings"]];
-const TITLES = { offline: "Can't reach your plan", today: "Today", calendar: "Calendar", rotations: "Rotations", progress: "Progress", policies: "Policies", ask: "Ask the policies", health: "Policy health", profile: "Profile and settings", schedule: "Schedule", setup: "Set up", journal: "Journal", history: "History", vault: "Residency vault", mspe: "MSPE", dsettings: "Debrief settings", boot: "Charted", habits: "Habits", career: "Career", connect: "Connections", projects: "Projects" };
-const SPACE = { journal: "debrief", history: "debrief", vault: "debrief", mspe: "debrief", dsettings: "debrief", progress: "school", rotations: "school", policies: "school", ask: "school", health: "school", schedule: "school" };
+const TITLES = { offline: "Can't reach your plan", today: "Today", calendar: "Calendar", rotations: "Rotations", progress: "Progress", policies: "Policies", ask: "Ask the policies", health: "Policy health", profile: "Profile and settings", schedule: "Schedule", setup: "Set up", journal: "Journal", history: "History", vault: "Residency vault", mspe: "MSPE", dsettings: "Debrief settings", boot: "Charted", habits: "Habits", career: "Career", connect: "Connections", projects: "Projects", aways: "Away rotations" };
+const SPACE = { journal: "debrief", history: "debrief", vault: "debrief", mspe: "debrief", dsettings: "debrief", progress: "school", rotations: "school", policies: "school", ask: "school", health: "school", schedule: "school", aways: "school" };
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");
 const KBD = IS_MAC ? "⌘K" : "Ctrl K";
 const WDL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
