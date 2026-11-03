@@ -607,8 +607,32 @@ function problems() {
   }
   return out;
 }
+/* whether this copy of Charted has a Microsoft app registration; without one, the publish link is the way in */
+let msReady = null;
+if (STANDALONE) cfg().then((c) => { msReady = !!c.msClientId; if (A.booted && A.ui.view === "connect") A.render(); });
+
+/* what's linked, for the sidebar: ok, attn (linked but failing or stale) or off */
+function status() {
+  const c = doc(); const ps = problems(); const bad = (n) => ps.some((p) => p.name === n);
+  const feeds = c && Array.isArray(c.feeds) ? c.feeds : [];
+  const can = feeds.filter((f) => f.kind === "canvas");
+  const out = feeds.filter((f) => f.kind === "outlook");
+  const canvas = !can.length ? "off" : can.some((f) => f.status === "error" || bad(f.name || KIND_NAME.canvas)) ? "attn" : "ok";
+  const hasMs = !!(c && c.ms);
+  const outlook = !out.length && !hasMs ? "off" : (out.some((f) => f.status === "error" || bad(f.name || KIND_NAME.outlook)) || (hasMs && bad("Outlook"))) ? "attn" : "ok";
+  return { canvas, outlook };
+}
+const INVITE_KEY = "perl.v1.cn-invite-later";
+function inviteCard() {
+  if (!STANDALONE || !A.booted || A.state.example || !A.state.profile.setupDone) return "";
+  const st = status(); if (st.canvas !== "off" || st.outlook !== "off") return "";
+  const later = Number(lsGet(INVITE_KEY)) || 0; if (Date.now() - later < 7 * DAY) return "";
+  return `<section class="cn-invite" aria-labelledby="h-cn-invite"><div><h2 id="h-cn-invite">Bring in Canvas and Outlook</h2>
+    <p>Due dates and meetings land on Today by themselves, with links back. Two links to paste, about two minutes.</p></div>
+    <div class="cn-health-act"><a class="btn small primary" href="#connect" id="cn-invite-go">Connect</a><button class="btn quiet small" data-act="cn-invite-later" id="cn-invite-later">Not now</button></div></section>`;
+}
 function healthCard() {
-  const ps = problems(); if (!ps.length) return "";
+  const ps = problems(); if (!ps.length) return inviteCard();
   return `<section class="cn-health" role="alert" aria-labelledby="h-cn-health"><div><h2 id="h-cn-health">${ps.length === 1 ? `${esc(ps[0].name)} isn't up to date` : `${ps.length} connections aren't up to date`}</h2>
     <p>Things due there may be missing below. ${ps.map((p) => `<b>${esc(p.name)}:</b> ${esc(p.why)}`).join(" ")}</p></div>
     <div class="cn-health-act"><button class="btn small" data-act="cn-sync-all" id="cn-health-sync">Sync now</button><a class="btn quiet small" href="#connect">Connections</a></div></section>`;
@@ -678,11 +702,21 @@ function msCard() {
   else status = statusLine("is-off", "Not linked");
   if (u.confirm === "ms") acts = `<span class="cn-confirm">Remove the Microsoft connection, its ${ms ? ms.calendar.events.length : 0} events and the deadlines added from email? The sign-in is forgotten on this device.</span><button class="btn small danger" id="cn-ms-rm-yes" data-act="cn-ms-remove-yes">Remove</button><button class="btn quiet small" data-act="cn-remove-no">Keep</button>`;
   else acts = `${ms && tok ? `<button class="btn small" id="cn-ms-sync" data-act="cn-ms-sync"${u.msBusy ? " disabled" : ""}>Sync now</button>` : `<button class="btn small" id="cn-ms-start" data-act="cn-ms-start">Sign in with Microsoft</button>`}${ms ? `<button class="btn quiet small" id="cn-ms-rm" data-act="cn-ms-remove">Remove</button>` : ""}`;
+  const linked = c && c.feeds.some((f) => f.kind === "outlook");
+  const steps = `<ol class="cn-steps">
+      <li><a href="https://outlook.office.com/calendar/options/calendar/SharedCalendars" target="_blank" rel="noopener">Open Outlook's shared-calendar settings ↗</a> and sign in with your Illinois account.</li>
+      <li>Under <b>Publish a calendar</b>, pick <b>Calendar</b> and <b>Can view all details</b>, then <b>Publish</b>.</li>
+      <li>Copy the <b>ICS</b> link (not the HTML one) and paste it below.</li>
+    </ol>`;
+  const publish = `${linked ? "" : steps}${feedRows(["outlook"])}
+    ${addForm("outlook", linked ? "Add another Outlook calendar link" : "Outlook ICS link", "https://outlook.office365.com/owa/calendar/…/calendar.ics")}
+    ${linked ? "" : `<p class="hint">No <b>Publish a calendar</b> option? Your school has turned it off for your account. Microsoft sign-in is the other route, and it has to be set up once for Charted first.</p>`}`;
+  /* without an app registration the sign-in button only leads to an error, so it isn't offered */
+  if (msReady === false && !ms) return card("ms", "Outlook calendar", `<p class="hint">Your meetings, clinic and lectures from the past week and the next 90 days. Read-only: Charted never writes to your calendar.</p>${linked ? "" : statusLine("is-off", "Not linked")}${publish}`);
   return card("ms", "Outlook calendar", `<p class="hint">Events from the next 60 days and the past week, through Microsoft. Read-only: Charted never writes to your calendar. The sign-in stays in this browser.</p>
     ${status}<div class="cn-acts">${acts}</div>
     <div class="cn-or"><span>Or paste an Outlook “publish calendar” link</span></div>
-    ${feedRows(["outlook"])}
-    ${addForm("outlook", "ICS link from Outlook › Settings › Calendar › Shared calendars › Publish a calendar", "https://outlook.office365.com/owa/calendar/…/calendar.ics")}`);
+    ${publish}`);
 }
 function suggRow(s) {
   const d = A.parseD(s.date);
@@ -691,7 +725,7 @@ function suggRow(s) {
 }
 function mailCard() {
   const c = doc(); const u = U(); const ms = c && c.ms;
-  if (!ms) return card("mail", "Outlook email", `<p class="hint">Suggested deadlines from messages your school sends: subject, sender, date and a 255-character preview are read, nothing else, and only the ones you accept are kept.</p>${statusLine("is-off", "Sign in with Microsoft above to scan your school inbox.")}`);
+  if (!ms) return card("mail", "Outlook email", `<p class="hint">Suggested deadlines from messages your school sends: subject, sender, date and a 255-character preview are read, nothing else, and only the ones you accept are kept.</p>${statusLine("is-off", msReady === false ? "Needs Microsoft sign-in, which isn't set up for Charted yet. Your calendar works without it." : "Sign in with Microsoft above to scan your school inbox.")}`);
   const added = ms.mail.suggestions.filter((s) => s.status === "added").length; const ai = aiAllowed();
   const list = u.sugg.length ? `<ul class="cn-sugg">${u.sugg.map(suggRow).join("")}</ul>` : "";
   return card("mail", "Outlook email", `<p class="hint">Suggested deadlines from messages your school sends. Charted reads the subject, sender, date and 255-character preview of mail from these domains, keeps only what you add, and never reads message bodies.</p>
@@ -705,6 +739,15 @@ function feedCard(kind, title, intro, label, placeholder) {
   const c = doc(); const has = c && c.feeds.some((f) => kinds.includes(f.kind));
   return card(kind, title, `<p class="hint">${intro}</p>${has ? "" : statusLine("is-off", "Not linked")}${feedRows(kinds)}${addForm(kind, label, placeholder)}`);
 }
+function canvasCard() {
+  const c = doc(); const has = c && c.feeds.some((f) => f.kind === "canvas");
+  return card("canvas", "Canvas", `<p class="hint">Assignments, due dates and course events from your Canvas calendar.</p>
+    ${has ? "" : `${statusLine("is-off", "Not linked")}<ol class="cn-steps">
+      <li><a href="https://canvas.illinois.edu/calendar" target="_blank" rel="noopener">Open your Canvas calendar ↗</a> in a browser (the Canvas phone app doesn't show the link).</li>
+      <li>At the bottom of the right-hand column, choose <b>Calendar Feed</b> and copy the link.</li>
+      <li>Paste it below.</li>
+    </ol>`}${feedRows(["canvas"])}${addForm("canvas", has ? "Add another Canvas feed" : "Canvas calendar feed link", "https://canvas.illinois.edu/feeds/calendars/user_….ics")}`);
+}
 function elsewhereCard() {
   return card("elsewhere", "Already connected elsewhere", `<ul class="cn-else">
     <li><a href="#habits"><b>Anki</b><small>Habits fills in your review habit from AnkiConnect on your computer.</small></a></li>
@@ -713,7 +756,7 @@ function elsewhereCard() {
   </ul>`);
 }
 function vConnect() {
-  const head = `<div class="title-row"><div><h1>Connections</h1><p class="finding">Link the calendars and inbox you already use; their dates show up on Today and the Calendar. Read-only: Charted never writes to them or sends anything.</p></div>${STANDALONE && !A.state.example && doc() && (doc().feeds.length || (doc().ms && tokens())) ? `<div class="title-actions"><button class="btn small" id="cn-sync-all" data-act="cn-sync-all">Sync all</button></div>` : ""}</div>`;
+  const head = `<div class="title-row"><div><h1>Connections</h1><p class="finding">Paste two links once: Canvas and Outlook. From then on their dates show up on Today and the Calendar, and sync every time Charted opens. Read-only: Charted never writes to them or sends anything.</p></div>${STANDALONE && !A.state.example && doc() && (doc().feeds.length || (doc().ms && tokens())) ? `<div class="title-actions"><button class="btn small" id="cn-sync-all" data-act="cn-sync-all">Sync all</button></div>` : ""}</div>`;
   if (!STANDALONE) return `<div class="cn" id="cn-root">${head}
     <section class="panel cn-needs-app" aria-labelledby="cn-needs-h"><h2 id="cn-needs-h">Connections need the installed app</h2><p>Here in Claude, Charted has nowhere private to keep a Microsoft sign-in and no proxy to fetch calendar feeds through. Open Charted as the installed app and go to Settings › Connections there. This is what you'll be able to link:</p></section>
     <div class="cn-cards">${[["ms", "Outlook calendar", "Sign in with Microsoft, or paste an Outlook publish link. Events from the next 60 days."], ["mail", "Outlook email", "Suggested deadlines from school senders; you tick which to add."], ["canvas", "Canvas", "Assignments, due dates and course events from the Canvas calendar feed."], ["google", "Google Calendar, or any .ics", "Events from the calendar's secret iCal address."]].map(([k, t, d]) => card(k, t, `<p class="hint">${esc(d)}</p>`)).join("")}${elsewhereCard()}</div></div>`;
@@ -721,8 +764,7 @@ function vConnect() {
   const c = doc();
   return `<div class="cn" id="cn-root">${head}
     <div class="cn-cards">
-      ${msCard()}${mailCard()}
-      ${feedCard("canvas", "Canvas", "Assignments and due dates, plus course events, from your Canvas calendar feed. In Canvas: Calendar › Calendar Feed, copy the link.", "Canvas calendar feed link", "https://canvas.illinois.edu/feeds/calendars/user_….ics")}
+      ${canvasCard()}${msCard()}${mailCard()}
       ${feedCard("google", "Google Calendar, or any .ics", "Events from a calendar's secret iCal address. In Google Calendar: Settings › your calendar › Secret address in iCal format.", "Secret iCal address", "https://calendar.google.com/calendar/ical/…/basic.ics")}
       ${elsewhereCard()}
     </div>
@@ -741,6 +783,7 @@ const acts = {
   "cn-feed-remove": (el) => { U().confirm = el.dataset.id; rerender(`#cn-rm-yes-${CSS.escape(el.dataset.id)}`); },
   "cn-feed-remove-yes": (el) => { const f = removeFeed(el.dataset.id); if (f) A.toast(`${f.name || KIND_NAME[f.kind] || "Calendar"} removed.`); rerender(`#cn-url-${f ? f.kind : "canvas"}`); },
   "cn-scan": () => scanMail(true),
+  "cn-invite-later": () => { lsSet(INVITE_KEY, String(Date.now())); A.toast("Okay. Connections are in the sidebar whenever you want them."); A.render(); },
   "cn-sugg-add": (el) => { const s = U().sugg.find((x) => x.id === el.dataset.id); acceptSuggestion(el.dataset.id); if (s) A.toast(`Added: ${s.label}, ${A.fmtShort(A.parseD(s.date))}.`); rerender(U().sugg.length ? `#cn-add-s-${CSS.escape(U().sugg[0].id)}` : "#cn-scan"); },
   "cn-sugg-dismiss": (el) => { dismissSuggestion(el.dataset.id); rerender(U().sugg.length ? `#cn-dis-s-${CSS.escape(U().sugg[0].id)}` : "#cn-scan"); },
   "cn-sync-all": (el) => { syncAll(true).then(() => { if (A.ui.view === "today") A.render(); }); A.toast("Syncing your connections…"); if (el && el.id === "cn-health-sync") return; rerender("#cn-sync-all"); }
@@ -780,7 +823,7 @@ const on = {
 });
 
 /* read-only helpers for tests; no data */
-window.PERL_CONNECT = Object.freeze({ parseIcs: (text, win) => parseIcs(text, win), heuristic: (msgs) => heuristic(msgs || []), mailPrompt: (msgs) => mailPrompt(msgs || [], iso(A.today())), cleanClaude: (reply, cands) => cleanClaude(reply, cands || []), resolveDate: (t, r) => { const d = resolveDate(t, r); return d ? iso(d) : ""; } });
+window.PERL_CONNECT = Object.freeze({ status: () => { try { return STANDALONE ? status() : null; } catch { return null; } }, parseIcs: (text, win) => parseIcs(text, win), heuristic: (msgs) => heuristic(msgs || []), mailPrompt: (msgs) => mailPrompt(msgs || [], iso(A.today())), cleanClaude: (reply, cands) => cleanClaude(reply, cands || []), resolveDate: (t, r) => { const d = resolveDate(t, r); return d ? iso(d) : ""; } });
 
 window.PERL_MODULES.push({ views: { connect: vConnect }, acts, on, today: healthCard, todaySlot: "alert" });
 })();

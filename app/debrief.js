@@ -595,6 +595,8 @@ function renderComposeFoot(){
       h("button", {type:"button", class:"btn primary", disabled:true}, h("span", {class:"spin", "aria-hidden":"true"}), "Cleaning up…"));
     return;
   }
+  /* on a busy night: keep the words now, tag them later from the entry (Clean up with Claude works there too) */
+  f.append(h("button", {type:"button", class:"btn ghost", text:"Save as is", title:"Save the note now without reviewing or tagging", onclick:saveAsIs}));
   f.append(h("button", {type:"button", class:"btn" + (state.ai === false ? " primary" : ""), text:"Review myself", onclick:reviewManually}));
   if (state.ai !== false) f.append(h("button", {type:"button", class:"btn primary", onclick:runCleanup}, icon("spark", "sm"), "Clean up with Claude", h("kbd", {text:mod + "↵"})));
 }
@@ -662,6 +664,15 @@ async function runCleanup(){
     state.compose.review = entryFromAI(out, text); state.compose.step = "review";
   } catch (e){ const m = aiError(e); if (m) toast(m); }
   finally { state.busy = null; renderComposer(); }
+}
+async function saveAsIs(){
+  const text = prepText(); if (!text) return;
+  const d = Object.assign(baseEntry(quickClean(text)), {quick:true}); d.words = wordsIn(d.text);
+  const ok = await putEntry(d); if (!ok) return;
+  state.energy = null; state.phiAckSig = ""; state.compose.rotation = null; state.compose.date = todayKey();
+  state.compose.step = "done"; state.compose.savedId = d.id; fresh.add(d.id);
+  setPad(""); saveDraft(); renderComposer(); renderAll();
+  requestAnimationFrame(() => { const b = $("#doneBtn"); if (b) b.focus(); });
 }
 function reviewManually(){ const text = prepText(); if (!text) return; state.compose.review = baseEntry(quickClean(text)); state.compose.step = "review"; renderComposer(); $("#composeTitle").focus(); }
 async function saveReview(checked){
@@ -2038,6 +2049,36 @@ function keepFocus(fn){ return function(...a){ const k = focusKey(document.activ
 renderToday = keepFocus(renderToday); renderCalendar = keepFocus(renderCalendar); renderJournal = keepFocus(renderJournal); renderJournalList = keepFocus(renderJournalList);
 renderVault = keepFocus(renderVault); renderMspe = keepFocus(renderMspe); renderToolkit = keepFocus(renderToolkit); renderDrawer = keepFocus(renderDrawer);
 renderComposer = keepFocus(renderComposer); renderComposeFoot = keepFocus(renderComposeFoot); renderImport = keepFocus(renderImport);
+
+/* ---------- quick log: the evening check-in (checkin.js) writes a structured entry without the full composer ----------
+   A write-only door into the journal: it takes what the student typed in the check-in, runs the same identifier scan as
+   the composer, and saves through putEntry. It hands back only what the check-in page shows (logged today or not, the
+   streak, the current rotation's name); entries themselves never leave the Debrief space. */
+window.PERL_QUICKLOG = Object.freeze({
+  ready: () => !!state.loaded,
+  rotation: () => currentRotation(),
+  loggedToday: () => entriesOn(todayKey()).length,
+  streak: () => streak(),
+  scan: (text) => scanPHI(str(text)).map(x => ({match:x.match, label:x.label})),
+  scrub: (text) => scrubPHI(str(text)),
+  async save(o){
+    o = o || {};
+    const lines = (v) => str(v).split(/\n+|;\s*/).map(s => s.trim()).filter(Boolean).slice(0, 8);
+    const did = lines(o.did), learned = lines(o.learned), said = str(o.said).trim();
+    if (!did.length && !learned.length && !said) return {ok:false, why:"empty"};
+    const all = [str(o.did), str(o.learned), said].join("\n");
+    const hits = scanPHI(all); if (hits.length && !o.phiOk) return {ok:false, why:"phi", hits:hits.map(x => ({match:x.match, label:x.label}))};
+    const parts = [did.length ? "What I did: " + did.join("; ") : "", learned.length ? "What I learned: " + learned.join("; ") : "", said ? "Feedback: " + said : ""].filter(Boolean);
+    const text = parts.join("\n");
+    const date = isDayKey(o.date) ? o.date : todayKey();
+    const e = Object.assign(baseEntry(text), {date, rotation:str(o.rotation) || rotationName(date), title:firstWords(did[0] || learned[0] || said), did, learned,
+      feedback:said ? [{from:str(o.from), said, tone:"positive"}] : [], energy:o.energy >= 1 && o.energy <= 5 ? Number(o.energy) : null, words:wordsIn(text), quick:true});
+    const ok = await putEntry(e); if (ok) renderAll();
+    return {ok, id:e.id};
+  },
+  open: (id) => { if (id) openEntry(id); else openComposer({}); }
+});
+function rotationName(d){ const r = rotationOn(d); return r ? r.name : state.settings.current; }
 
 /* ---------- boot ---------- */
 if (typeof draft0.text === "string" && draft0.text){ pad.value = draft0.text; lastLen = draft0.text.length; }

@@ -259,8 +259,8 @@ const SECTIONS = [
   { k: "career", l: "Career", home: "career", pages: [["career", "Career"]] },
   { k: "projects", l: "Projects", home: "projects", pages: [["projects", "Projects"]] }
 ];
-const SETTINGS_PAGES = [["profile", "Profile and settings"], ["connect", "Connections"], ["dsettings", "Debrief settings"]];
-const TITLES = { offline: "Can't reach your plan", today: "Today", calendar: "Calendar", rotations: "Rotations", progress: "Progress", policies: "Policies", ask: "Ask the policies", health: "Policy health", profile: "Profile and settings", schedule: "Schedule", setup: "Set up", journal: "Journal", history: "History", vault: "Residency vault", mspe: "MSPE", dsettings: "Debrief settings", boot: "Charted", habits: "Habits", career: "Career", connect: "Connections", projects: "Projects", aways: "Away rotations" };
+const SETTINGS_PAGES = [["profile", "Profile and settings"], ["connect", "Connections"], ["phone", "On your phone"], ["dsettings", "Debrief settings"]];
+const TITLES = { offline: "Can't reach your plan", today: "Today", calendar: "Calendar", rotations: "Rotations", progress: "Progress", policies: "Policies", ask: "Ask the policies", health: "Policy health", profile: "Profile and settings", schedule: "Schedule", setup: "Set up", journal: "Journal", history: "History", vault: "Residency vault", mspe: "MSPE", dsettings: "Debrief settings", boot: "Charted", habits: "Habits", career: "Career", connect: "Connections", projects: "Projects", aways: "Away rotations", checkin: "Check in", phone: "Charted on your phone" };
 const SPACE = { journal: "debrief", history: "debrief", vault: "debrief", mspe: "debrief", dsettings: "debrief", progress: "school", rotations: "school", policies: "school", ask: "school", health: "school", schedule: "school", aways: "school" };
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");
 const KBD = IS_MAC ? "⌘K" : "Ctrl K";
@@ -278,7 +278,22 @@ function navLink(sec) {
 function navHtml() {
   return `<button class="side-new" data-act="new" aria-keyshortcuts="N"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M9 3.5v11M3.5 9h11"/></svg><span>New debrief</span><kbd aria-hidden="true">N</kbd></button>
   <button class="side-search" data-act="palette" aria-keyshortcuts="${IS_MAC ? "Meta+K" : "Control+K"}"><svg viewBox="0 0 18 18" aria-hidden="true">${ICON.search}</svg><span>Search or ask</span><kbd aria-hidden="true">${KBD}</kbd></button>
-  <nav class="nav" aria-label="Main">${SECTIONS.map(navLink).join("")}</nav>`;
+  <nav class="nav" aria-label="Main">${SECTIONS.map(navLink).join("")}</nav>
+  ${sideExtras()}`;
+}
+/* under the nav: the evening check-in and what's synced, so neither hides in Settings */
+function sideExtras() {
+  if (!booted || state.example) return "";
+  const st = window.PERL_CONNECT && window.PERL_CONNECT.status ? window.PERL_CONNECT.status() : null;
+  const left = window.PERL_CHECKIN ? window.PERL_CHECKIN.left() : 0;
+  const ci = `<a class="side-row${ui.view === "checkin" ? " on" : ""}" href="#checkin" ${ui.view === "checkin" ? 'aria-current="page"' : ""}><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3.5 9.5l3 3 8-8"/></svg><span>Check in</span>${left ? `<span class="count-chip num" aria-label="${left} left today">${left}</span>` : ""}</a>`;
+  if (!st) return `<div class="side-extra">${ci}</div>`;
+  const dot = (k) => `<i class="sync-dot is-${st[k]}" aria-hidden="true"></i>`;
+  const word = { ok: "synced", attn: "needs attention", off: "not connected" };
+  const sync = st.canvas === "off" && st.outlook === "off"
+    ? `<a class="side-row side-cta${ui.view === "connect" ? " on" : ""}" href="#connect"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M7.5 10.5a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-.8.8M10.5 7.5a3 3 0 0 0-4.2 0L3.7 10.1a3 3 0 0 0 4.2 4.2l.8-.8"/></svg><span>Connect Canvas and Outlook</span></a>`
+    : `<a class="side-row${ui.view === "connect" ? " on" : ""}" href="#connect" aria-label="Connections: Canvas ${word[st.canvas]}, Outlook ${word[st.outlook]}"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3 9a6 6 0 0 1 10.3-4.2M15 9a6 6 0 0 1-10.3 4.2M13.5 2.5v2.5H11M4.5 15.5V13H7"/></svg><span class="sync-l">${dot("canvas")}Canvas ${dot("outlook")}Outlook</span></a>`;
+  return `<div class="side-extra">${ci}${sync}</div>`;
 }
 /* the tabs inside a section: shown only when the section has more than one page */
 function subnavHtml() {
@@ -303,6 +318,7 @@ function scopeHtml() {
     <div class="me-menu" id="me-menu" ${ui.meOpen ? "" : "hidden"}>
       <a href="#profile" ${ui.view === "profile" ? 'aria-current="page"' : ""}>Profile and settings</a>
       <a href="#connect" ${ui.view === "connect" ? 'aria-current="page"' : ""}>Connections</a>
+      <a href="#phone" ${ui.view === "phone" ? 'aria-current="page"' : ""}>On your phone</a>
       <a href="#dsettings" ${ui.view === "dsettings" ? 'aria-current="page"' : ""}>Debrief settings</a>
       ${window.PERL_ACCOUNT ? `<a href="#profile" data-act="go-acct">Account</a>` : ""}
       ${themeBtn()}
@@ -784,6 +800,10 @@ const pal = { open: false, q: "", idx: 0, items: [] };
 function go(view) { if (location.hash === `#${view}`) render(); else location.hash = view; }
 function palCommands() {
   const cmds = [
+    { g: "Actions", icon: "action", label: "Check in for today", hint: "Habits and a quick debrief", run: () => go("checkin") },
+    { g: "Actions", icon: "action", label: "Connect Canvas", hint: "Assignments and due dates", run: () => { go("connect"); setTimeout(() => document.getElementById("cn-url-canvas")?.focus(), 80); } },
+    { g: "Actions", icon: "action", label: "Connect Outlook", hint: "Your calendar", run: () => { go("connect"); setTimeout(() => document.getElementById("cn-url-outlook")?.focus(), 80); } },
+    { g: "Actions", icon: "action", label: "Get Charted on my phone", hint: "Install it in two taps", run: () => go("phone") },
     { g: "Actions", icon: "action", label: "Add a rotation", run: () => { go("rotations"); setTimeout(() => $("#rot-name")?.focus(), 60); } },
     { g: "Actions", icon: "action", label: "Pick my clerkship track", hint: "Fills in your year", run: () => { go("schedule"); setTimeout(() => document.getElementById("track")?.scrollIntoView({ block: "start" }), 60); } },
     { g: "Actions", icon: "action", label: "Drop in my clerkship schedule", hint: "The Excel file your clerkship sends", run: () => { go("schedule"); setTimeout(() => { document.getElementById("drop-sched")?.scrollIntoView({ block: "start" }); document.getElementById("sched-x")?.click(); }, 80); } },
@@ -2335,7 +2355,8 @@ window.PERL_APP = Object.freeze({
   persist: () => persist(), render: () => render(), toast: (m) => toast(m), go: (v) => go(v), refocus: (s) => refocus(s),
   esc, today, isoD, parseD, fmt, fmtShort, addDays, diffDays, plural,
   schedFor: (iso) => schedFor(iso), currentRotation: () => currentRotation(), nextRotation: () => nextRotation(), rotsParsed: () => rotsParsed(),
-  pdfText: (buf) => pdfText(buf)
+  pdfText: (buf) => pdfText(buf), saveFile: (n, t, m) => saveFile(n, t, m),
+  install: Object.freeze({ available: () => !!installPrompt, installed: () => runningInstalled(), run: () => runInstall(), steps: () => installSteps() })
 });
 function modToday(slot) { return window.PERL_MODULES.filter((m) => (m.todaySlot || "main") === slot).map((m) => { try { return m.today ? m.today() || "" : ""; } catch { return ""; } }).join(""); }
 

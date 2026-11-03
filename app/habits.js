@@ -425,7 +425,7 @@ function byId(id) { return items().find((h) => h.id === id); }
 function cellFocus(r, day) { const u = U(); u.focus = `${r}-${day}`; }
 
 const acts = {
-  "hab-today": (el) => { const id = el.dataset.id; const on = toggle(todayIso(), id, el.dataset.ver || ""); const where = el.id.startsWith("hb-t-") ? "t" : "p"; rerender(`#hb-${where}-${id}`); if (on) setTimeout(() => { U().pop = null; }, 600); },
+  "hab-today": (el) => { const id = el.dataset.id; const on = toggle(todayIso(), id, el.dataset.ver || ""); const where = (el.id.match(/^hb-([tpk])-/) || [])[1] || "p"; rerender(`#hb-${where}-${id}`); if (on) setTimeout(() => { U().pop = null; }, 600); },
   "hab-cell": (el) => {
     if (el.getAttribute("aria-disabled") === "true") { A.toast("That day hasn't happened yet."); return; }
     toggle(el.dataset.d, el.dataset.id, ""); cellFocus(el.dataset.r, el.dataset.day); rerender(`#hb-c-${el.dataset.r}-${el.dataset.day}`); setTimeout(() => { U().pop = null; }, 600);
@@ -526,5 +526,11 @@ document.addEventListener("perl:view", (ev) => {
 });
 
 window.PERL_MODULES = window.PERL_MODULES || [];
+/* the evening check-in (checkin.js) shows the same rows, so ticking a habit there is the same tap as on Today */
+window.PERL_HABITS = Object.freeze({
+  count: () => items().length,
+  done: () => { const t = todayIso(); return items().filter((h) => mark(t, h.id)).length; },
+  list: () => listHtml("k")
+});
 window.PERL_MODULES.push({ views: { habits: vHabits }, acts, on, today: todayCard });
 })();

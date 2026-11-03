@@ -1867,6 +1867,84 @@ body:where(:not(.dbf, .dbf *)){line-height: 1.5;}
   .aw-facts{grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);}
 }
 
+/* Sidebar extras (app.js sideExtras): the check-in and what's synced, under the main nav */
+.side-extra{display: grid; gap: 2px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--rule);}
+.side-row{display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 0 12px; border-radius: 999px; color: var(--muted); text-decoration: none; font-size: 14px; transition: background 150ms var(--ease), color 150ms var(--ease);}
+.side-row:hover, .side-row.on{background: var(--sunk); color: var(--text);}
+.side-row svg{width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;}
+.side-row > span:first-of-type{flex: 1; min-width: 0;}
+.side-row.side-cta{color: var(--text-2);}
+.side-row.side-cta span{white-space: normal; line-height: 18px; padding: 6px 0;}
+.sync-l{display: inline-flex; align-items: center; gap: 6px; font-size: 13px;}
+.sync-dot{display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--control);}
+.sync-dot.is-ok{background: var(--teal);}
+.sync-dot.is-attn{background: var(--amber);}
+.sync-l .sync-dot + *{margin-right: 4px;}
+
+/* Connections: guided steps and the calm invite on Today */
+.cn-steps{margin: 4px 0 12px; padding-left: 20px; display: grid; gap: 6px; color: var(--text-2); font-size: 13px; line-height: 19px;}
+.cn-steps b{color: var(--text); font-weight: 500;}
+.cn-steps a{color: var(--text); text-underline-offset: 3px;}
+.cn-invite{display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface);}
+.cn-invite h2{margin: 0 0 2px; font-size: 15px; font-weight: 500;}
+.cn-invite p{margin: 0; font-size: 13px; line-height: 19px; color: var(--text-2); max-width: 64ch;}
+
+/* Check in (checkin.js): one column, big targets, built for a thumb */
+.ci{display: grid; gap: var(--gap); max-width: 680px; margin: 0 auto; width: 100%;}
+.ci-private{font-size: 12px; color: var(--debrief-text);}
+.ci-form{display: grid; gap: 14px;}
+.ci-f textarea{min-height: 0; font-size: 15px; line-height: 21px;}
+.ci-f input[type=text]{font-size: 15px;}
+.ci-energy{display: grid; gap: 8px;}
+.ci-en-row{display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px;}
+.ci-en{display: grid; gap: 2px; justify-items: center; min-height: 52px; padding: 6px 2px; border: 1px solid var(--border); border-radius: var(--r-row); background: var(--raised); color: var(--text-2); cursor: pointer; font: inherit;}
+.ci-en b{font-size: 16px; font-weight: 500; color: var(--text);}
+.ci-en small{font-size: 11px; line-height: 14px; text-align: center;}
+.ci-en.on{border-color: var(--debrief); background: var(--debrief-wash); color: var(--debrief-text);}
+.ci-en.on b{color: var(--debrief-text);}
+.ci-tip{margin: -4px 0 0;}
+.ci-row-acts{display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;}
+.ci-row-acts .btn.primary{min-width: 160px; height: 44px;}
+.ci-long{margin-left: auto; color: var(--muted); font-size: 13px;}
+.ci-done-line{display: flex; align-items: center; gap: 10px; margin: 0 0 12px; font-size: 15px;}
+.ci-done-line b{font-weight: 500;}
+.ci-ck{display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--debrief); flex: none;}
+.ci-ck svg{width: 12px; height: 12px; fill: none; stroke: var(--on-debrief); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;}
+.ci-phi{padding: 12px 14px; border-radius: var(--r-row); border: 1px solid var(--amber); background: var(--amber-wash); font-size: 13px; line-height: 19px;}
+.ci-phi p{margin: 0 0 10px;}
+.ci-phi mark{background: transparent; color: var(--amber-text); font-weight: 500;}
+.ci-phi small{color: var(--muted);}
+.ci-phi-act{display: flex; flex-wrap: wrap; gap: 8px;}
+.ci-rem summary{cursor: pointer; font-weight: 600; font-size: 14px; list-style-position: inside;}
+.ci-rem[open] summary{margin-bottom: 8px;}
+.ci-rem-row{display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; margin-top: 10px;}
+.ci-rem-row .field{width: 140px;}
+.ci-hb .hb-row{min-height: 56px;}
+
+/* the Check in button pinned to the bottom on phones */
+.ci-bar{display: none;}
+@media (max-width: 900px){
+  .ci-bar:not([hidden]){display: inline-flex; align-items: center; gap: 8px; position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 30; height: 48px; padding: 0 18px 0 16px; border-radius: 999px; background: var(--text); color: var(--inverse); font-weight: 500; font-size: 15px; text-decoration: none; box-shadow: var(--shadow-float); white-space: nowrap;}
+  .ci-bar svg{width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;}
+  .ci-bar-n{opacity: .7; font-size: 13px;}
+  .canvas{padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));}
+  .ci-long{margin-left: 0; flex-basis: 100%; text-align: left;}
+  .ci-row-acts .btn.primary{flex: 1 1 100%;}
+}
+@media (prefers-reduced-motion: no-preference){ .ci-bar{transition: opacity 160ms var(--ease);} }
+
+/* On your phone */
+.ph-grid{display: grid; grid-template-columns: minmax(0, 280px) minmax(0, 1fr); gap: var(--gap); align-items: start;}
+.ph-qr{display: grid; justify-items: center; gap: 12px; text-align: center;}
+.ph-qr img{width: 200px; height: 200px; border-radius: 12px; background: #fff; padding: 8px;}
+.ph-h{margin: 0 0 10px; font-size: 14px; font-weight: 600;}
+.ph-h2{margin-top: 18px;}
+.ph-steps{margin: 0; padding-left: 20px; display: grid; gap: 10px; color: var(--text-2); font-size: 14px; line-height: 21px;}
+.ph-steps b{color: var(--text); font-weight: 500;}
+.ph-list{margin: 0; padding-left: 20px; display: grid; gap: 8px; color: var(--text-2);}
+.ph-ico svg{width: 16px; height: 16px; vertical-align: -3px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;}
+@media (max-width: 720px){ .ph-grid{grid-template-columns: minmax(0, 1fr);} }
+
 /* SOURCE OF TRUTH. Originally generated once by tools/port_debrief.py from handoff/perl/, then edited by hand; edit this file directly. The port script is retired and refuses to run, so nothing regenerates or overwrites it. */
 /* Debrief space: Perl's components on the merged dark palette. Gold is retired: progress and completion take the Debrief accent.
    Coral becomes the shared attention amber; red stays for what's wrong. Rotation tints are low-chroma so nothing shouts. */
