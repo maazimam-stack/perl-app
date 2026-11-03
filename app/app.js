@@ -1486,7 +1486,7 @@ function auditReview(r) {
 }
 let pdfReady = null;
 function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("Couldn't load the PDF reader")); document.head.appendChild(s); }); }
-async function pdfText(buf) {
+async function pdfText(buf, pageMark) {
   if (!pdfReady) pdfReady = loadScript("vendor/pdf.min.js");
   await pdfReady;
   const lib = window.pdfjsLib;
@@ -1496,7 +1496,7 @@ async function pdfText(buf) {
   let out = "";
   for (let i = 1; i <= Math.min(doc.numPages, 40); i++) {
     const pg = await doc.getPage(i); const tc = await pg.getTextContent();
-    out += pdfJoin(tc.items) + "\n";
+    out += (pageMark ? pageMark.replace("#", String(i)) : "") + pdfJoin(tc.items) + "\n";
   }
   return out.replace(/[ \t]+/g, " ").trim();
 }
@@ -2355,7 +2355,7 @@ window.PERL_APP = Object.freeze({
   persist: () => persist(), render: () => render(), toast: (m) => toast(m), go: (v) => go(v), refocus: (s) => refocus(s),
   esc, today, isoD, parseD, fmt, fmtShort, addDays, diffDays, plural,
   schedFor: (iso) => schedFor(iso), currentRotation: () => currentRotation(), nextRotation: () => nextRotation(), rotsParsed: () => rotsParsed(),
-  pdfText: (buf) => pdfText(buf), saveFile: (n, t, m) => saveFile(n, t, m),
+  pdfText: (buf, mark) => pdfText(buf, mark), saveFile: (n, t, m) => saveFile(n, t, m),
   install: Object.freeze({ available: () => !!installPrompt, installed: () => runningInstalled(), run: () => runInstall(), steps: () => installSteps() })
 });
 function modToday(slot) { return window.PERL_MODULES.filter((m) => (m.todaySlot || "main") === slot).map((m) => { try { return m.today ? m.today() || "" : ""; } catch { return ""; } }).join(""); }

@@ -1783,6 +1783,18 @@ body:where(:not(.dbf, .dbf *)){line-height: 1.5;}
 
 /* Projects (projects.js) and FMCC night clinic (fmcc.js). Shared tokens only, so dark and light follow the student's choice.
    Calm by default: rows on rules, one open editor at a time. */
+.pj-imp{border: 1px solid var(--border);}
+.pj-ed .pj-imp{margin: 0;}
+.pj-drop{display: grid; justify-items: center; gap: 4px; padding: 28px 16px; border: 1.5px dashed var(--control); border-radius: var(--r-card); background: var(--raised); text-align: center; cursor: pointer; transition: border-color 150ms var(--ease), background 150ms var(--ease);}
+.pj-drop:hover, .pj-drop.is-over, .pj-drop:focus-within{border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--raised));}
+.pj-drop b{font-weight: 500; font-size: 15px;}
+.pj-drop span{color: var(--muted); font-size: 13px;}
+.pj-drop.is-busy{cursor: progress; opacity: .8;}
+.pj-paste{margin-top: 12px;}
+.pj-paste summary{cursor: pointer; color: var(--text-2); font-size: 13px;}
+.pj-paste textarea{margin: 10px 0 8px;}
+.pj-src{margin: 0; color: var(--muted); font-size: 13px;}
+.pj-src b{color: var(--text-2); font-weight: 500;}
 .pj-list{list-style: none; margin: 0; padding: 0;}
 .pj-row{border-bottom: 1px solid var(--rule);}
 .pj-row:last-child{border-bottom: 0;}
