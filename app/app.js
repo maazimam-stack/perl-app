@@ -1200,7 +1200,7 @@ function heroFact(cur, nx) {
   const t = today();
   if (cur) {
     const n = diffDays(t, cur.e);
-    if (n <= SOON) return `${rotShort(cur.name)} ${n === 0 ? "ends today" : `ends ${relWhen(cur.e)}`}.`;
+    if (n <= 1) return `${rotShort(cur.name)} ${n === 0 ? "ends today" : `ends ${relWhen(cur.e)}`}.`;   /* the week count stays up until the last two days */
     return `Week ${Math.floor(diffDays(cur.s, t) / 7) + 1} of ${Math.ceil((diffDays(cur.s, cur.e) + 1) / 7)} in ${rotShort(cur.name)}.`;
   }
   if (nx && diffDays(t, nx.date) <= SOON) return `${nx.label}, ${diffDays(t, nx.date) < 0 ? "not yet checked off" : relWhen(nx.date)}.`;
@@ -1219,8 +1219,10 @@ function heroHtml() {
   const h = new Date().getHours(); const hello = h < 5 ? "Good evening" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
   const name = (pr.name || "").trim().split(/\s+/)[0];
   const meta = `${hello}${name ? `, ${esc(name)}` : ""}. ${WDL[t.getDay()]}, ${MONTHL[t.getMonth()]} ${t.getDate()}<span class="hero-where">${esc(phaseLabel(pr.phase))}${pr.track ? `, ${esc(trackLabel(pr))}` : ""}</span>`;
-  const todayEv = schedFor(isoD(t));
-  const daySec = todayEv.length ? `<h2 class="label">Today on ${esc(rotShort(todayEv[0].sched))}</h2><ul class="day-list">${todayEv.map(evRow).join("")}</ul>`
+  const todayEv = schedFor(isoD(t)); const tm = addDays(t, 1); const tomEv = schedFor(isoD(tm));
+  const late = new Date().getHours() >= 15;
+  const tomSec = tomEv.length && (late || !todayEv.length) ? `<h2 class="label">Tomorrow, ${WDL[tm.getDay()]}</h2><ul class="day-list">${tomEv.map(evRow).join("")}</ul>` : "";
+  const daySec = todayEv.length || tomSec ? (late && tomSec ? tomSec : "") + (todayEv.length ? `<h2 class="label">${late && tomSec ? "Earlier today" : `Today on ${esc(rotShort(todayEv[0].sched))}`}</h2><ul class="day-list${late && tomSec ? " is-past" : ""}">${todayEv.map(evRow).join("")}</ul>` : "") + (!late && tomSec ? tomSec : "")
     : cur && (state.scheds || []).some((x) => x.from <= isoD(t) && x.to >= isoD(t)) ? `<p class="hero-hint">Nothing on your ${esc(rotShort(cur.name))} schedule today.</p>`
     : cur ? `<p class="hero-hint">Add your ${esc(rotShort(cur.name))} schedule to see each day here. <a class="link" href="#schedule" data-act="go-drop">Add schedule</a></p>`
     : !(state.rotations || []).length ? `<p class="hero-hint">Pick your clerkship track and your year fills in. <a class="link" href="#schedule" data-act="go-track">Choose a track</a></p>` : "";
@@ -1300,13 +1302,41 @@ function conflictsPanel() {
   </section>`;
 }
 /* Today answers three things first: where you are and what's next, today's habits, and today's debrief. Then what's coming. */
+/* A clerkship schedule the student dropped in is the ground truth for that block's dates. If the rotation list has the
+   same clerkship somewhere else (or not at all), the week count, deadlines and Debrief's rotation are all off. */
+function schedMismatches() {
+  if (state.example) return [];
+  const out = [];
+  for (const sc of state.scheds || []) {
+    if (sc.sample || !sc.from || !sc.to || !sc.name) continue;
+    const same = (state.rotations || []).filter((r) => r.name === sc.name || r.name.startsWith(sc.name) || sc.name.startsWith(r.name));
+    if (same.some((r) => r.start <= sc.to && r.end >= sc.from)) continue;
+    out.push({ sc, rot: same.length === 1 ? same[0] : null });
+  }
+  return out;
+}
+function mismatchCard() {
+  const ms = schedMismatches(); if (!ms.length) return "";
+  const { sc, rot } = ms[0]; const f = parseD(sc.from), to = parseD(sc.to);
+  const span = `${fmtShort(f)} to ${fmtShort(to)}`;
+  return `<section class="cn-health" role="status" aria-labelledby="h-sched-mm"><div><h2 id="h-sched-mm">Your ${esc(rotShort(sc.name))} dates don't match its schedule</h2>
+    <p>The ${esc(rotShort(sc.name))} schedule you dropped in runs <b class="num">${esc(span)}</b>${rot ? `, but your rotations list has ${esc(rotShort(rot.name))} from ${esc(fmtShort(parseD(rot.start)))} to ${esc(fmtShort(parseD(rot.end)))}` : `, but it isn't on your rotations list`}. Until they match, Today can't count your weeks and its deadlines are off.</p></div>
+    <div class="cn-health-act"><button class="btn small primary" data-act="sched-fix" data-sid="${esc(sc.id)}" id="sched-fix">${rot ? `Move ${esc(rotShort(rot.name))} to ${esc(span)}` : `Add ${esc(rotShort(sc.name))}, ${esc(span)}`}</button><a class="btn quiet small" href="#rotations">Edit rotations</a></div></section>`;
+}
+function fixSchedMismatch(sid) {
+  const m = schedMismatches().find((x) => x.sc.id === sid); if (!m) return;
+  const { sc, rot } = m;
+  if (rot) { rot.start = sc.from; rot.end = sc.to; rot.src = "you"; }
+  else state.rotations = (state.rotations || []).concat([{ id: "r" + Date.now().toString(36), name: sc.name, kind: "clerkship", start: sc.from, end: sc.to, src: "you" }]);
+  persist(); render(); toast(`${rotShort(sc.name)} is now ${fmtShort(parseD(sc.from))} to ${fmtShort(parseD(sc.to))}. Its deadlines moved with it.`);
+}
 function vToday() {
   const pend = state.example ? [] : (state.rotations || []).filter(guessedPast);
   const pendCard = pend.length ? `<section class="cn-health" role="status" aria-labelledby="h-ct-alert"><div><h2 id="h-ct-alert">Confirm ${pend.length === 1 ? "a past clerkship" : `${pend.length} past clerkships`}</h2>
       <p>${esc(pend.map((r) => `${rotShort(r.name)} ${fmtShort(parseD(r.start))}–${fmtShort(parseD(r.end))}`).join(", "))} came from a standard track's dates, so ${pend.length === 1 ? "its" : "their"} evaluations, grades and grade-review deadlines aren't counted until you confirm or fix ${pend.length === 1 ? "it" : "them"}.</p></div>
       <div class="cn-health-act"><button class="btn small" data-act="wiz-open">Build my year</button><a class="btn quiet small" href="#schedule" data-act="go-track">Review one by one</a></div></section>` : "";
   return `<div class="home">
-    ${pendCard}${modToday("alert")}
+    ${mismatchCard()}${pendCard}${modToday("alert")}
     ${heroHtml()}
     <div class="today-pair">${modToday("main")}<section class="dbf dbf-today" id="view-today" aria-label="Debrief"></section></div>
     ${comingUpPanel()}
@@ -1836,7 +1866,32 @@ function schedItems() {
   return out;
 }
 const EV_TAG = { exam: "Exam", due: "Due", call: "Call", off: "Off" };
-function evRow(e) { return `<li><span class="tm num">${esc(e.time || "All day")}</span><span class="ev-t"><b>${esc(e.title)}</b>${e.details.length ? `<small>${esc(e.details.slice(0, 2).join(" · "))}</small>` : ""}</span>${EV_TAG[e.kind] ? `<span class="ev-tag">${EV_TAG[e.kind]}</span>` : ""}</li>`; }
+/* A schedule cell's extra lines are a place and a person, unlabelled ("Carle Mattis", "James Farris, APP",
+   "Dr. Chavez, Center Bldg. 3rd fl."). Sort them so the day reads: when, what, where, with whom. */
+const PLACE_RE = /\b(carle|mattis|osf|presence|bldg|building|rm|room|fl|floor|center|centre|clinic|hospital|conf|conference|suite|unit|lab|hall|campus|zoom|teams|virtual|online|tower|wing|pavilion|ed|er|icu|picu|nicu|or|ward|lobby|library|auditorium|street|st|ave|rd|drive|dr\.?\s*\d)\b|\d+(?:st|nd|rd|th)\b/i;
+const CRED_RE = /^(?:md|do|app|np|pa|pa-c|phd|lcsw|lcpc|rn|aprn|dnp|psyd|fnp|pmhnp|cnm|crnp)\.?$/i;
+const PERSON_RE = /^(?:dr\.?\s|prof\.?\s)|,\s*(?:md|do|app|np|pa|pa-c|phd|lcsw|lcpc|rn|aprn|dnp|psyd|fnp|pmhnp|cnm|crnp)\.?$/i;
+function evParts(e) {
+  const where = [], who = [], other = [];
+  for (const raw of e.details || []) {
+    const parts = String(raw).split(/,\s*/).reduce((a, x) => { if (a.length && CRED_RE.test(x.trim())) a[a.length - 1] += ", " + x.trim(); else a.push(x.trim()); return a; }, []).filter(Boolean);
+    /* keep "Dr. Chavez" apart from "Center Bldg. 3rd fl.", but a plain "James Farris, APP" stays one person */
+    for (const x of parts) {
+      if (PERSON_RE.test(x)) who.push(x);
+      else if (PLACE_RE.test(x)) where.push(x);
+      else if (/^[A-Z][a-z'’-]+(?:\s[A-Z]\.?)?(?:\s[A-Z][a-z'’-]+){1,2}$/.test(x)) who.push(x);
+      else other.push(x);
+    }
+  }
+  return { where: where.join(", "), who: who.join(", "), other: other.join(" · ") };
+}
+const PIN = `<svg viewBox="0 0 14 14" aria-hidden="true"><path d="M7 12.5s4-3.6 4-6.8a4 4 0 0 0-8 0c0 3.2 4 6.8 4 6.8z"/><circle cx="7" cy="5.7" r="1.4"/></svg>`;
+const PERSON = `<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="4.6" r="2.3"/><path d="M2.6 12.3a4.4 4.4 0 0 1 8.8 0"/></svg>`;
+function evRow(e) {
+  const p = evParts(e);
+  const meta = [p.where ? `<span class="ev-m"><span class="sr">Where: </span>${PIN}${esc(p.where)}</span>` : "", p.who ? `<span class="ev-m"><span class="sr">With: </span>${PERSON}${esc(p.who)}</span>` : "", p.other ? `<span class="ev-m ev-o">${esc(p.other)}</span>` : ""].join("");
+  return `<li class="ev k-${esc(e.kind || "other")}"><span class="tm num">${esc(e.time || "All day").replace(/\s*[-–]\s*/, "–<wbr>")}</span><span class="ev-t"><b>${esc(e.title)}</b>${meta ? `<span class="ev-meta">${meta}</span>` : ""}</span>${EV_TAG[e.kind] ? `<span class="ev-tag">${EV_TAG[e.kind]}</span>` : ""}</li>`;
+}
 function hasDays(r) { return (state.scheds || []).some((s) => s.from <= r.end && s.to >= r.start && (s.name === r.name || r.name.startsWith(s.name))); }
 async function readDroppedFile(file) {
   ui.drop = { status: "reading", file: file.name };
@@ -2501,6 +2556,7 @@ document.addEventListener("click", (ev) => {
     case "sync-reload": ui.tabConflict = false; if (ui.otherTab) { takeSpace(ui.otherTab.space, ui.otherTab.data); ui.otherTab = null; persist(); render(); toast("Using the other version."); } else reloadFromStore(false); break;
     case "sync-keep": ui.tabConflict = false; ui.otherTab = null; persist(); render(); toast("Kept this version. It's saved now."); break;
     case "install": runInstall(); break;
+    case "sched-fix": fixSchedMismatch(t.dataset.sid); break;
     case "reauth": if (window.PERL_ACCOUNT && window.PERL_ACCOUNT.reauth) window.PERL_ACCOUNT.reauth(); break;
     case "ai-toggle": if (window.PERL_ACCOUNT) { window.PERL_ACCOUNT.setAiAllowed(!window.PERL_ACCOUNT.aiAllowed()); render(); toast(window.PERL_ACCOUNT.aiAllowed() ? "Claude allowed." : "Claude turned off."); } break;
     case "sign-out": if (window.PERL_ACCOUNT) window.PERL_ACCOUNT.signOut(); break;

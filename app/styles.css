@@ -671,10 +671,15 @@ table.tk tbody tr.dim:where(:not(.dbf, .dbf *)){opacity: .35;}
 .day-list:where(:not(.dbf, .dbf *)){list-style: none; margin: 0; padding: 0; display: grid; gap: 6px;}
 .day-list li:where(:not(.dbf, .dbf *)){display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 9px 12px; border-radius: var(--r-row); background: var(--raised); border: 1px solid var(--border);}
 .dr-body .day-list li:where(:not(.dbf, .dbf *)){background: var(--surface); border-color: transparent;}
-.day-list .tm:where(:not(.dbf, .dbf *)){font-size: 13px; color: var(--text-2); white-space: nowrap;}
+.day-list .tm:where(:not(.dbf, .dbf *)){font-size: 13px; color: var(--text-2); overflow-wrap: anywhere;}
 .day-list .ev-t:where(:not(.dbf, .dbf *)){min-width: 0;}
 .day-list .ev-t b:where(:not(.dbf, .dbf *)){display: block; font-size: 14px; line-height: 19px; font-weight: 500;}
 .day-list .ev-t small:where(:not(.dbf, .dbf *)){display: block; color: var(--muted); font-size: 13px; line-height: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}
+.day-list .ev-meta:where(:not(.dbf, .dbf *)){display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 3px;}
+.day-list .ev-m:where(:not(.dbf, .dbf *)){display: inline-flex; align-items: center; gap: 5px; color: var(--text-2); font-size: 13px; line-height: 18px; min-width: 0; overflow-wrap: anywhere;}
+.day-list .ev-m svg:where(:not(.dbf, .dbf *)){width: 13px; height: 13px; flex: none; fill: none; stroke: var(--muted); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round;}
+.day-list .ev-o:where(:not(.dbf, .dbf *)){color: var(--muted);}
+.day-list.is-past:where(:not(.dbf, .dbf *)){opacity: .7;}
 .ev-tag:where(:not(.dbf, .dbf *)){font-size: 11px; line-height: 18px; padding: 0 7px; border-radius: 999px; background: var(--sunk); color: var(--text-2);}
 .hero-hint:where(:not(.dbf, .dbf *)){margin: 0; padding: 12px 14px; border-radius: var(--r-row); border: 1px dashed var(--control); color: var(--text-2); font-size: 13px; line-height: 19px;}
 .hero-next > .label + .day-list + .label:where(:not(.dbf, .dbf *)){margin-top: 6px;}
