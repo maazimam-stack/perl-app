@@ -587,7 +587,7 @@ function feedItems() {
   }
   return out;
 }
-window.PERL_FEEDS = () => { try { return feedItems(); } catch { return []; } };
+window.PERL_FEEDS = () => { try { return feedItems().concat(typeof dcFeedItems === "function" ? dcFeedItems() : []); } catch { return []; } };
 
 /* ================= sync health: nothing goes missing silently ================= */
 const STALE_MS = 24 * 3600 * 1000;
@@ -620,7 +620,7 @@ function status() {
   const canvas = !can.length ? "off" : can.some((f) => f.status === "error" || bad(f.name || KIND_NAME.canvas)) ? "attn" : "ok";
   const hasMs = !!(c && c.ms);
   const outlook = !out.length && !hasMs ? "off" : (out.some((f) => f.status === "error" || bad(f.name || KIND_NAME.outlook)) || (hasMs && bad("Outlook"))) ? "attn" : "ok";
-  return { canvas, outlook };
+  return { canvas, outlook, discord: dcStatus() };
 }
 const INVITE_KEY = "perl.v1.cn-invite-later";
 function inviteCard() {
@@ -646,6 +646,7 @@ async function syncAll(manual) {
   const jobs = [];
   for (const f of c.feeds) if (stale(f.lastSync)) jobs.push(syncFeed(f, manual));
   if (c.ms && tokens() && stale(c.ms.lastSync)) jobs.push(syncMs(false));
+  if (c.discord && Array.isArray(c.discord.guilds) && c.discord.guilds.length && stale(c.discord.lastSync)) jobs.push(dcSync(manual));
   await Promise.allSettled(jobs);
 }
 /* tokens left behind after the plan was erased, or the connection removed in another browser: drop them (only once the
@@ -655,7 +656,9 @@ function onBoot() {
   if (started || !A.booted) return; started = true;
   if (!STANDALONE) return;
   const land = landing();
-  if (land) msFinish(land);
+  const dcl = dcLanding();
+  if (dcl) { dcConfig().then(() => dcFinish(dcl)); }
+  else if (land) msFinish(land);
   else { reconcile(); if (autoSync()) setTimeout(() => syncAll(false), 0); }
   timer = setInterval(() => { if (autoSync()) syncAll(false); }, SYNC_EVERY);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && autoSync()) syncAll(false); });
@@ -764,7 +767,7 @@ function vConnect() {
   const c = doc();
   return `<div class="cn" id="cn-root">${head}
     <div class="cn-cards">
-      ${canvasCard()}${msCard()}${mailCard()}
+      ${canvasCard()}${msCard()}${mailCard()}${dcCard()}
       ${feedCard("google", "Google Calendar, or any .ics", "Events from a calendar's secret iCal address. In Google Calendar: Settings › your calendar › Secret address in iCal format.", "Secret iCal address", "https://calendar.google.com/calendar/ical/…/basic.ics")}
       ${elsewhereCard()}
     </div>
@@ -783,6 +786,15 @@ const acts = {
   "cn-feed-remove": (el) => { U().confirm = el.dataset.id; rerender(`#cn-rm-yes-${CSS.escape(el.dataset.id)}`); },
   "cn-feed-remove-yes": (el) => { const f = removeFeed(el.dataset.id); if (f) A.toast(`${f.name || KIND_NAME[f.kind] || "Calendar"} removed.`); rerender(`#cn-url-${f ? f.kind : "canvas"}`); },
   "cn-scan": () => scanMail(true),
+  "dc-start": () => dcStart(),
+  "dc-retry": () => { dcConfig(true); },
+  "dc-sync": () => dcSync(true),
+  "dc-servers": () => { const u = DU(); u.err = ""; dcServers(); A.toast("Checking your Discord servers…"); },
+  "dc-unlink": async () => { try { await dcCall("unlink"); } catch { /* removed here regardless */ } const c = ensure(); delete c.discord; const u = DU(); u.servers = null; u.sugg = []; save(); A.toast("Discord removed."); rerender("#dc-start"); },
+  "dc-seen": () => { const d = dcDoc(); if (d) { d.seenAt = Date.now(); save(); A.render(); } },
+  "dc-copy": async (el) => { try { await navigator.clipboard.writeText(el.dataset.v || ""); A.toast("Invite link copied. Send it to a server admin."); } catch { A.toast(el.dataset.v || ""); } },
+  "dc-sugg-add": (el) => { const d = dcEnsure(); const s = d.suggestions.find((x) => x.id === el.dataset.id); if (!s) return; s.status = "added"; save(); A.toast(`Added: ${s.label}, ${A.fmtShort(A.parseD(s.date))}. It's on your Calendar.`); A.render(); },
+  "dc-sugg-dismiss": (el) => { const d = dcEnsure(); const s = d.suggestions.find((x) => x.id === el.dataset.id); if (s) s.status = "dismissed"; save(); A.render(); },
   "cn-invite-later": () => { lsSet(INVITE_KEY, String(Date.now())); A.toast("Okay. Connections are in the sidebar whenever you want them."); A.render(); },
   "cn-sugg-add": (el) => { const s = U().sugg.find((x) => x.id === el.dataset.id); acceptSuggestion(el.dataset.id); if (s) A.toast(`Added: ${s.label}, ${A.fmtShort(A.parseD(s.date))}.`); rerender(U().sugg.length ? `#cn-add-s-${CSS.escape(U().sugg[0].id)}` : "#cn-scan"); },
   "cn-sugg-dismiss": (el) => { dismissSuggestion(el.dataset.id); rerender(U().sugg.length ? `#cn-dis-s-${CSS.escape(U().sugg[0].id)}` : "#cn-scan"); },
@@ -795,6 +807,12 @@ const on = {
       const d = ensure(); if (!d.ms) return true;
       const doms = [...new Set(String(t.value).toLowerCase().split(/[,\s;]+/).map((x) => x.replace(/^@/, "").trim()).filter((x) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(x)))].slice(0, 10);
       d.ms.mail.domains = doms.length ? doms : DEFAULT_DOMAINS.slice(); delete U().draft.domains; save(); A.render(); return true;
+    }
+    if (t.dataset && t.dataset.dcCh) {
+      const d = dcEnsure(); const g = d.guilds.find((x) => x.id === t.dataset.g) || (() => { const srv = (DU().servers || []).find((x) => x.id === t.dataset.g); const n = { id: t.dataset.g, name: srv ? srv.name : "", channels: [] }; d.guilds.push(n); return n; })();
+      const on = !!t.checked; g.channels = on ? [...new Set(g.channels.concat([t.dataset.dcCh]))] : g.channels.filter((x) => x !== t.dataset.dcCh);
+      if (on && g.channels.length > 10) { g.channels = g.channels.filter((x) => x !== t.dataset.dcCh); t.checked = false; A.toast("Up to 10 channels per server."); }
+      save(); return true;
     }
     if (t.id === "cn-autosync") { const d = ensure(); d.settings.autoSync = !!t.checked; save(); if (t.checked) syncAll(false); return true; }
     return false;
@@ -823,7 +841,169 @@ const on = {
 });
 
 /* read-only helpers for tests; no data */
+
+/* ================= Discord: events and announcements from class servers (read-only) =================
+   Through the `discord` edge function. The student signs in with Discord once (identify, guilds, guilds.members.read) so
+   Charted knows which servers they're in and their roles; Charted's bot reads only servers that both they and the bot are
+   in, and only channels they can see in Discord. Kept in state.connect.discord:
+     { name, guilds: [{ id, name, channels: [ids] }], lastSync, okAt, status, error,
+       events: [{ id, guild, name, description, start, end, location, url }],
+       posts: [{ id, guild, channel, author, at, text, files, url }], seenAt, scanned: [ids], suggestions: [{…, status}] } */
+const DC_STATE = "perl.v1.dc-state";
+const TZNAME = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Chicago"; } catch { return "America/Chicago"; } })();
+const DU = () => { const u = U(); if (!u.dc) u.dc = { cfg: null, busy: false, err: "", servers: null, notIn: [], sugg: [], scan: { busy: false, note: "" } }; return u.dc; };
+const dcDoc = () => { const c = doc(); return c && c.discord && typeof c.discord === "object" ? c.discord : null; };
+function dcEnsure() { const c = ensure(); if (!c.discord || typeof c.discord !== "object") c.discord = { name: "", guilds: [], lastSync: 0, status: "ok", error: "", events: [], posts: [], seenAt: 0, scanned: [], suggestions: [] }; const d = c.discord;
+  for (const k of ["guilds", "events", "posts", "scanned", "suggestions"]) if (!Array.isArray(d[k])) d[k] = []; return d; }
+async function dcCall(action, body) {
+  const c = await cfg(); const token = jwt();
+  if (!c.functionsUrl) throw fail("unavailable", "Discord isn't available in this copy of Charted.");
+  if (!token) throw fail("attention", "Sign in to Charted again, then retry.");
+  let r; try { r = await fetch(c.functionsUrl + "/discord", { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + token, ...(c.anonKey ? { apikey: c.anonKey } : {}) }, body: JSON.stringify({ action, tz: TZNAME, ...(body || {}) }) }); }
+  catch { throw fail("unavailable", "Couldn't reach Charted's server. Check your connection."); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw fail(r.status === 401 ? "attention" : "unavailable", (j.error && j.error.message) || "Discord didn't answer. Try again in a minute.");
+  return j;
+}
+let dcCfgP = null;
+function dcConfig(force) {
+  const u = DU(); if (u.cfg && !force) return Promise.resolve(u.cfg);
+  if (dcCfgP && !force) return dcCfgP;   /* one request at a time, however many renders ask */
+  dcCfgP = (async () => {
+    try { u.cfg = await dcCall("config"); } catch (e) { u.cfg = { setup: null, error: e.message }; }
+    dcCfgP = null; if (A.ui.view === "connect") A.render(); return u.cfg;
+  })();
+  return dcCfgP;
+}
+function dcStart() {
+  const u = DU(); const c = u.cfg; if (!c || !c.clientId) return;
+  const st = "dc-" + randomB64(16); ssSet(DC_STATE, st);
+  const q = new URLSearchParams({ client_id: c.clientId, response_type: "code", redirect_uri: redirectUri(), scope: "identify guilds guilds.members.read", state: st, prompt: "consent" });
+  location.href = "https://discord.com/oauth2/authorize?" + q.toString();
+}
+function dcLanding() { const q = new URLSearchParams(LANDED.search || ""); const st = q.get("state") || ""; return st.startsWith("dc-") ? { code: q.get("code") || "", state: st, error: q.get("error") || "" } : null; }
+async function dcFinish(land) {
+  if (/[?&]state=dc-/.test(location.search)) history.replaceState(null, "", location.pathname + "#connect");
+  const u = DU(); const want = ssGet(DC_STATE); ssDel(DC_STATE);
+  A.go("connect");
+  if (land.error) { u.err = land.error === "access_denied" ? "Discord sign-in was cancelled." : "Discord sign-in didn't finish. Try again."; refreshIfShown(); return; }
+  if (!want || want !== land.state) { u.err = "That Discord sign-in didn't start here. Try again."; refreshIfShown(); return; }
+  u.busy = true; refreshIfShown();
+  try {
+    const r = await dcCall("link", { code: land.code, redirectUri: redirectUri() });
+    if (r.setup === false) throw fail("unavailable", "Discord isn't set up for Charted yet.");
+    const d = dcEnsure(); d.name = r.name || "";
+    u.notIn = (r.guilds || []).filter((g) => !g.bot);
+    save(); u.busy = false; A.toast(`Signed in to Discord as ${d.name}.`); await dcServers();
+  } catch (e) { u.err = e.message; u.busy = false; }
+  refreshIfShown();
+}
+async function dcServers() {
+  const u = DU(); const d = dcEnsure();
+  try {
+    const r = await dcCall("servers"); u.servers = r.servers || [];
+    /* first time: each server the bot can read, with its announcement channels ticked */
+    for (const g of u.servers) if (!d.guilds.some((x) => x.id === g.id)) d.guilds.push({ id: g.id, name: g.name, channels: g.channels.filter((c) => c.announcement).map((c) => c.id) });
+    d.guilds = d.guilds.filter((x) => u.servers.some((g) => g.id === x.id));
+    save();
+    if (d.guilds.length) await dcSync(true);
+  } catch (e) { u.err = e.message; if (/not_linked|Sign in with Discord/.test(e.message)) { const c = doc(); if (c) delete c.discord; save(); } }
+  refreshIfShown();
+}
+const dcWhen = (isoTs) => { const t = new Date(isoTs); return isNaN(t) ? null : t; };
+async function dcSync(manual) {
+  const u = DU(); const d = dcDoc(); if (!d || u.busy) return; if (!d.guilds.length) return;
+  u.busy = true; if (manual) refreshIfShown();
+  try {
+    const r = await dcCall("sync", { guilds: d.guilds.map((g) => ({ id: g.id, channels: g.channels })) });
+    if (r.setup === false) throw fail("unavailable", "Discord isn't set up for Charted yet.");
+    d.events = (r.events || []).slice(0, 100);
+    const old = new Map(d.posts.map((p) => [p.id, p]));
+    d.posts = (r.posts || []).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 80);
+    if (!d.seenAt) d.seenAt = Date.now() - 3 * 864e5;   /* first sync: the last three days count as new, not three weeks of backlog */
+    d.status = "ok"; d.error = ""; d.okAt = Date.now();
+    const fresh = d.posts.filter((p) => !old.has(p.id) && !d.scanned.includes(p.id));
+    if (fresh.length) dcScan(fresh, manual);
+  } catch (e) { d.status = "error"; d.error = e.message; }
+  d.lastSync = Date.now(); u.busy = false; save(); refreshIfShown();
+}
+/* dates in announcements, offered like the inbox scan: Claude when allowed (on a manual sync), otherwise the same rules */
+async function dcScan(posts, manual) {
+  const d = dcDoc(); if (!d) return; const u = DU();
+  const msgs = posts.map((p) => ({ id: p.id, subject: clip(String(p.text).split("\n")[0], 100), preview: clip(p.text, 600), received: p.at, from: `${p.author} in #${p.channel}`, webLink: p.url }));
+  let sugg = null;
+  if (manual && aiAllowed()) { try { sugg = await claudeSuggest(msgs.slice(0, CLAUDE_MAX)); } catch { sugg = null; } }
+  if (!sugg) sugg = heuristic(msgs);
+  d.scanned = d.scanned.concat(msgs.map((m) => m.id)).slice(-500);
+  const had = new Set(d.suggestions.map((s) => s.msgId));
+  d.suggestions = d.suggestions.concat(sugg.filter((s) => !had.has(s.msgId)).map((s) => ({ ...s, status: "new" }))).slice(-200);
+  save(); refreshIfShown();
+}
+function dcFeedItems() {
+  const d = dcDoc(); if (!d) return []; const out = [];
+  for (const e of d.events) {
+    const t = dcWhen(e.start); if (!t) continue; const day = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+    const time = t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    out.push({ date: day, label: e.name, rule: [time, e.location].filter(Boolean).join(" · "), code: "", w: DUE_RE.test(e.name) ? 3 : 1, source: "Discord", url: e.url, join: "", time, feed: true, uid: "dc-ev:" + e.id });
+  }
+  for (const s of d.suggestions) { if (s.status !== "added") continue; const date = A.parseD(s.date); if (!date) continue;
+    out.push({ date, label: s.label, rule: `From Discord · ${clip(s.from, 40)}`, code: "", w: 3, source: "Discord", url: s.webLink || "", time: "", feed: true, uid: "dc-msg:" + s.msgId }); }
+  return out;
+}
+function dcStatus() { const d = dcDoc(); if (!d || !d.guilds.length) return "off"; return d.status === "error" || (d.okAt && Date.now() - d.okAt > STALE_MS) ? "attn" : "ok"; }
+
+/* ---------- the Discord card on Connections ---------- */
+const DC_ICON = `<svg viewBox="0 0 18 18" aria-hidden="true"><path d="M5.2 4.6a10 10 0 0 1 2.4-.8l.3.6a9 9 0 0 1 2.2 0l.3-.6c.9.2 1.7.4 2.4.8 1.4 2 2 4.2 1.8 6.4a9.6 9.6 0 0 1-2.9 1.5l-.6-1M5.2 4.6C3.8 6.6 3.2 8.8 3.4 11a9.6 9.6 0 0 0 2.9 1.5l.6-1M6.4 11.3c1.7.8 3.5.8 5.2 0"/><circle cx="7" cy="8.8" r=".9"/><circle cx="11" cy="8.8" r=".9"/></svg>`;
+ICONS.discord = DC_ICON;
+function dcFollowSteps(inv) {
+  return `<ol class="cn-steps">
+      <li>In Discord, make a private server just for you: <b>+</b> (Add a Server) › <b>Create My Own</b> › <b>For me and my friends</b>.</li>
+      <li><a href="${esc(inv)}" target="_blank" rel="noopener">Add Charted's bot to that server ↗</a>.</li>
+      <li>In the class server, open each announcement channel (the megaphone icon) and tap <b>Follow</b>, then pick your server. New announcements are copied there as they're posted.</li>
+      <li>Come back and tap <b>Check again</b>.</li>
+    </ol><p class="hint">The class server's Events tab doesn't follow this way; for events, an admin has to add the bot.</p>`;
+}
+function dcCard() {
+  const u = DU(); const d = dcDoc(); const c = u.cfg;
+  if (!c) { dcConfig(); return card("discord", "Discord", `<p class="hint">Events and announcements from your class servers.</p>${statusLine("is-busy", "Checking…")}`); }
+  if (c.setup === null) return card("discord", "Discord", `<p class="hint">Events and announcements from your class servers.</p>${statusLine("is-attn", esc(c.error || "Couldn't reach Charted's server."))}<div class="cn-acts"><button class="btn small" data-act="dc-retry" id="dc-retry">Try again</button></div>`);
+  if (!c.setup) return card("discord", "Discord", `<p class="hint">Events and announcements from your class servers.</p>${statusLine("is-off", "Not set up for Charted yet. Whoever runs Charted adds a Discord app once; then everyone signs in with Discord here.")}`);
+  const inv = c.invite || "";
+  if (!d) return card("discord", "Discord", `<p class="hint">Scheduled events go to Today and the Calendar, new announcements show on Today, and dates in them are offered to add. Read-only: Charted never posts or reacts, and it only reads channels you can see yourself.</p>
+    ${u.err ? statusLine("is-attn", esc(u.err)) : statusLine("is-off", "Not linked")}
+    <div class="cn-acts"><button class="btn small primary" data-act="dc-start" id="dc-start" ${u.busy ? "disabled" : ""}>${u.busy ? "Linking…" : "Sign in with Discord"}</button></div>`);
+  const servers = u.servers;
+  const notIn = u.notIn || [];
+  const st = u.busy ? statusLine("is-busy", "Syncing…") : d.status === "error" ? statusLine("is-attn", `Needs attention: ${esc(d.error)}`) : d.guilds.length ? statusLine("is-ok", `Signed in as ${esc(d.name || "you")} · synced ${esc(ago(d.lastSync))} · ${d.events.length === 1 ? "1 event" : `${d.events.length} events`}, ${d.posts.length} posts`) : statusLine("is-attn", `Signed in as ${esc(d.name || "you")}, but Charted's bot isn't in any of your servers yet.`);
+  const list = servers ? servers.map((g) => { const sel = d.guilds.find((x) => x.id === g.id); const chosen = new Set(sel ? sel.channels : []);
+    return `<fieldset class="dc-srv"><legend>${esc(g.name)}</legend>${g.channels.length ? `<div class="dc-ch">${g.channels.slice(0, 30).map((ch) => `<label class="cn-check"><input type="checkbox" data-dc-ch="${esc(ch.id)}" data-g="${esc(g.id)}" ${chosen.has(ch.id) ? "checked" : ""}> #${esc(ch.name)}${ch.announcement ? ` <span class="pill">Announcements</span>` : ""}</label>`).join("")}</div>` : `<p class="hint">No channels you can see.</p>`}</fieldset>`; }).join("")
+    : `<p class="hint"><button class="link" data-act="dc-servers" id="dc-servers">Choose channels</button></p>`;
+  const pend = d.suggestions.filter((x) => x.status === "new");
+  const sugg = pend.length ? `<h3 class="dc-h">Dates found in announcements</h3><ul class="cn-sugg">${pend.map(suggRow).join("").replace(/cn-sugg-add/g, "dc-sugg-add").replace(/cn-sugg-dismiss/g, "dc-sugg-dismiss").replace(/>Open email</g, ">Open in Discord<")}</ul>` : "";
+  return card("discord", "Discord", `<p class="hint">Scheduled events go to Today and the Calendar; new posts in the channels you tick show on Today. Read-only, and only channels you can see yourself.</p>
+    ${st}<div class="cn-acts"><button class="btn small" data-act="dc-sync" id="dc-sync" ${u.busy ? "disabled" : ""}>Sync now</button><button class="btn quiet small" data-act="dc-servers" id="dc-recheck">Check again</button><button class="btn quiet small" data-act="dc-unlink" id="dc-unlink">Remove</button></div>
+    ${servers ? `<h3 class="dc-h">Channels to follow</h3>${list}` : list}
+    ${sugg}
+    <details class="dc-more"${d.guilds.length ? "" : " open"}><summary>Class server not showing up?</summary>
+      <p class="hint">Charted's bot has to be in a server before it can read it${notIn.length ? `. You're in ${notIn.length} ${notIn.length === 1 ? "server" : "servers"} it isn't` : ""}. Two ways in:</p>
+      <h3 class="dc-h">Ask a server admin (events and announcements)</h3>
+      <p class="hint">Send them this link. It asks only to view channels and read message history. <button class="link" data-act="dc-copy" data-v="${esc(inv)}">Copy invite link</button></p>
+      <h3 class="dc-h">Or on your own, today (announcements only)</h3>${dcFollowSteps(inv)}
+    </details>`);
+}
+/* new announcements on Today, then out of the way */
+function dcTodayCard() {
+  if (!STANDALONE || !A.booted || A.state.example) return "";
+  const d = dcDoc(); if (!d || !d.posts.length) return "";
+  const fresh = d.posts.filter((p) => Date.parse(p.at) > (d.seenAt || 0)); if (!fresh.length) return "";
+  const show = fresh.slice(0, 3);
+  return `<section class="panel dc-today" aria-labelledby="h-dc-today"><div class="panel-head"><span class="ph-t"><h2 id="h-dc-today">New on Discord</h2><span class="count-chip num">${fresh.length}</span></span><button class="btn quiet small" data-act="dc-seen" id="dc-seen">Mark read</button></div>
+    <ul class="dc-posts">${show.map((p) => `<li><p class="dc-meta">#${esc(p.channel)} · ${esc(p.author)} · ${esc(ago(Date.parse(p.at)))}</p><p class="dc-text">${esc(clip(p.text, 280))}</p><a class="link" href="${esc(p.url)}" target="_blank" rel="noopener">Open in Discord</a></li>`).join("")}</ul>
+    ${fresh.length > show.length ? `<p class="hint">${fresh.length - show.length} more in Discord.</p>` : ""}</section>`;
+}
+
 window.PERL_CONNECT = Object.freeze({ status: () => { try { return STANDALONE ? status() : null; } catch { return null; } }, parseIcs: (text, win) => parseIcs(text, win), heuristic: (msgs) => heuristic(msgs || []), mailPrompt: (msgs) => mailPrompt(msgs || [], iso(A.today())), cleanClaude: (reply, cands) => cleanClaude(reply, cands || []), resolveDate: (t, r) => { const d = resolveDate(t, r); return d ? iso(d) : ""; } });
 
 window.PERL_MODULES.push({ views: { connect: vConnect }, acts, on, today: healthCard, todaySlot: "alert" });
+window.PERL_MODULES.push({ today: dcTodayCard, todaySlot: "main" });
 })();

@@ -1962,6 +1962,20 @@ body:where(:not(.dbf, .dbf *)){line-height: 1.5;}
 .ph-ico svg{width: 16px; height: 16px; vertical-align: -3px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;}
 @media (max-width: 720px){ .ph-grid{grid-template-columns: minmax(0, 1fr);} }
 
+/* Discord (connect.js) */
+.dc-h{margin: 16px 0 8px; font-size: 13px; font-weight: 600;}
+.dc-srv{margin: 0 0 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-row);}
+.dc-srv legend{padding: 0 4px; font-size: 13px; font-weight: 500;}
+.dc-ch{display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px 14px;}
+.dc-ch .pill{height: 18px; font-size: 11px;}
+.dc-more{margin-top: 14px;}
+.dc-more summary{cursor: pointer; font-size: 13px; color: var(--text-2);}
+.dc-posts{list-style: none; margin: 0; padding: 0; display: grid;}
+.dc-posts li{padding: 10px 2px; border-top: 1px solid var(--rule);}
+.dc-posts li:first-child{border-top: 0; padding-top: 0;}
+.dc-meta{margin: 0 0 2px; color: var(--muted); font-size: 12px;}
+.dc-text{margin: 0 0 4px; font-size: 14px; line-height: 20px; white-space: pre-line; overflow-wrap: anywhere;}
+
 /* SOURCE OF TRUTH. Originally generated once by tools/port_debrief.py from handoff/perl/, then edited by hand; edit this file directly. The port script is retired and refuses to run, so nothing regenerates or overwrites it. */
 /* Debrief space: Perl's components on the merged dark palette. Gold is retired: progress and completion take the Debrief accent.
    Coral becomes the shared attention amber; red stays for what's wrong. Rotation tints are low-chroma so nothing shouts. */

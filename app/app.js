@@ -292,7 +292,7 @@ function sideExtras() {
   const word = { ok: "synced", attn: "needs attention", off: "not connected" };
   const sync = st.canvas === "off" && st.outlook === "off"
     ? `<a class="side-row side-cta${ui.view === "connect" ? " on" : ""}" href="#connect"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M7.5 10.5a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-.8.8M10.5 7.5a3 3 0 0 0-4.2 0L3.7 10.1a3 3 0 0 0 4.2 4.2l.8-.8"/></svg><span>Connect Canvas and Outlook</span></a>`
-    : `<a class="side-row${ui.view === "connect" ? " on" : ""}" href="#connect" aria-label="Connections: Canvas ${word[st.canvas]}, Outlook ${word[st.outlook]}"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3 9a6 6 0 0 1 10.3-4.2M15 9a6 6 0 0 1-10.3 4.2M13.5 2.5v2.5H11M4.5 15.5V13H7"/></svg><span class="sync-l">${dot("canvas")}Canvas ${dot("outlook")}Outlook</span></a>`;
+    : `<a class="side-row${ui.view === "connect" ? " on" : ""}" href="#connect" aria-label="Connections: Canvas ${word[st.canvas]}, Outlook ${word[st.outlook]}${st.discord && st.discord !== "off" ? `, Discord ${word[st.discord]}` : ""}"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3 9a6 6 0 0 1 10.3-4.2M15 9a6 6 0 0 1-10.3 4.2M13.5 2.5v2.5H11M4.5 15.5V13H7"/></svg><span class="sync-l">${dot("canvas")}Canvas ${dot("outlook")}Outlook${st.discord && st.discord !== "off" ? ` ${dot("discord")}Discord` : ""}</span></a>`;
   return `<div class="side-extra">${ci}${sync}</div>`;
 }
 /* the tabs inside a section: shown only when the section has more than one page */
