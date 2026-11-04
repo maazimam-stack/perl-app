@@ -36,6 +36,19 @@ const SHEETS = (() => {
   }
 
   /* ---------- xlsx ---------- */
+  const colName = (j) => { let s = ""; j++; while (j > 0) { const m = (j - 1) % 26; s = String.fromCharCode(65 + m) + s; j = Math.floor((j - 1) / 26); } return s; };
+  /* Did every line in the student's cells make it into the parsed day? Compared with spacing and case ignored, in order. */
+  const squash = (x) => String(x || "").toLowerCase().replace(/[\s\u00a0]+/g, "");
+  function verify(src, days) {
+    const out = {}; let lines = 0, missing = 0;
+    for (const d of new Set([...Object.keys(src || {}), ...Object.keys(days || {})])) {
+      const hay = (days[d] || []).map((e) => squash(e.time) + squash(e.title) + (e.details || []).map(squash).join("")).join("");
+      const miss = [];
+      for (const c of (src || {})[d] || []) for (const ln of c.text.split(/\n+/)) { const q = squash(ln); if (!q) continue; lines++; if (!hay.includes(q)) { missing++; miss.push({ ref: c.ref, text: ln.trim() }); } }
+      out[d] = miss;
+    }
+    return { byDay: out, lines, missing };
+  }
   const colIdx = (letters) => [...letters].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
   const ref = (a1) => { const m = /^([A-Z]+)(\d+)$/.exec(a1 || ""); return m ? { c: colIdx(m[1]), r: +m[2] - 1 } : null; };
   const kids = (el, tag) => Array.from(el.getElementsByTagName(tag));
@@ -158,12 +171,18 @@ const SHEETS = (() => {
     const cell = (r, c) => (grid[r] && grid[r][c]) || "";
     const weeks = []; grid.forEach((r, i) => { if (/^\s*week\s*\d+/i.test(cell(i, 0))) weeks.push(i); });
     if (!weeks.length) return null;
-    const people = new Map(); let from = null, to = null;
+    const people = new Map(); let from = null, to = null; const skipped = []; let prevDates = null;
     weeks.forEach((w, wi) => {
       const end = wi + 1 < weeks.length ? weeks[wi + 1] : grid.length;
       let dr = -1, dates = [];
       for (let i = w; i < Math.min(end, w + 3); i++) { const ds = [1, 2, 3, 4, 5, 6, 7].map((j) => toIso(cell(i, j))); if (ds.filter(Boolean).length >= 3) { dr = i; dates = ds; break; } }
-      if (dr < 0) return;
+      if (dr < 0) {
+        /* no row of dates: if the week before had dates, this is the 7 days after it. Read it, but say so. */
+        const txt = []; for (let i = w; i < end; i++) for (let j = 1; j < (grid[i] || []).length; j++) if (cell(i, j) && !LABEL.test(cell(i, j))) txt.push(cell(i, j));
+        if (prevDates && prevDates.some(Boolean)) { dr = w; dates = prevDates.map((d) => { if (!d) return null; const x = new Date(d + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() + 7); return x.toISOString().slice(0, 10); }); if (txt.length) skipped.push({ ref: `A${w + 1}`, label: cell(w, 0), cells: txt.length, guessed: dates.filter(Boolean)[0] + "/" + dates.filter(Boolean).slice(-1)[0] }); }
+        else { if (txt.length) skipped.push({ ref: `A${w + 1}`, label: cell(w, 0), cells: txt.length }); return; }
+      }
+      prevDates = dates;
       const starts = [];
       for (let i = dr + 1; i < end; i++) {
         const a = cell(i, 0); if (!a || LABEL.test(a)) continue;
@@ -172,18 +191,20 @@ const SHEETS = (() => {
       }
       starts.forEach((s, k) => {
         const stop = k + 1 < starts.length ? starts[k + 1].i : end;
-        if (!people.has(s.name)) people.set(s.name, {});
-        const pd = people.get(s.name);
+        if (!people.has(s.name)) people.set(s.name, { days: {}, src: {}, unread: [] });
+        const P = people.get(s.name); const pd = P.days;
         dates.forEach((d, j) => {
           if (!d) return;
           if (!from || d < from) from = d; if (!to || d > to) to = d;
-          const lines = []; for (let i = s.i; i < stop; i++) { const v = cell(i, j + 1); if (v) lines.push(...v.split(/\n+/)); }
+          const lines = []; for (let i = s.i; i < stop; i++) { const v = cell(i, j + 1); if (v) { lines.push(...v.split(/\n+/)); (P.src[d] = P.src[d] || []).push({ ref: colName(j + 1) + (i + 1), text: v }); } }
           const evs = dayEvents(lines); if (evs.length) pd[d] = (pd[d] || []).concat(evs);
         });
+        /* anything in this student's rows that sits under no date: a column past the week, or a cell with no date above it */
+        for (let i = s.i; i < stop; i++) (grid[i] || []).forEach((v, j) => { if (!v || j === 0) return; if (j > 7 || !dates[j - 1]) P.unread.push({ ref: colName(j) + (i + 1), text: v }); });
       });
     });
     if (!people.size) return null;
-    return { people: [...people].map(([name, d]) => ({ name, days: d })), from, to };
+    return { people: [...people].map(([name, P]) => ({ name, days: P.days, src: P.src, unread: P.unread })), from, to, skipped };
   }
   function fromFilename(name) {
     const base = String(name || "").replace(/\.[a-z0-9]+$/i, "");
@@ -192,5 +213,5 @@ const SHEETS = (() => {
     for (const w of words) if (NAMES.some(([rx]) => rx.test(w))) { clerk = canon(w); break; }
     return { block: blk ? blk[1].toUpperCase() : "", clerkship: clerk };
   }
-  return { read, parseCsv, tracks, days, dayEvents, canon, fromFilename, toIso };
+  return { read, parseCsv, tracks, days, dayEvents, canon, fromFilename, toIso, verify };
 })();

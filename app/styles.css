@@ -2646,3 +2646,33 @@ body.locked{overflow:hidden}
 .dbf .dayitem > *{min-width:0;overflow-wrap:break-word}
 /* calm layer: on Today the debrief prompt sits on the page like its neighbours, not in a card */
 .dbf-today .hero{background:transparent;padding:0}
+
+/* schedule check: the student's file next to what Charted shows */
+.cmp-line{margin: 6px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 13px; line-height: 18px; color: var(--text-2);}
+.rows .cmp-li{display: block; padding: 0 0 8px;}
+.cmp{display: grid; gap: 8px; margin-top: 4px;}
+.cmp-head, .cmp-row{display: grid; grid-template-columns: 120px minmax(0, 1fr) minmax(0, 1.3fr); gap: 12px;}
+.cmp-head{padding: 0 12px; font-size: 13px;}
+.cmp-head p{margin: 0;}
+.cmp-head p:first-child{grid-column: 2;}
+.cmp-tools{display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding: 0 12px;}
+.cmp-row{padding: 10px 12px; border-radius: var(--r-row); border: 1px solid var(--border); background: var(--surface, var(--raised)); scroll-margin: 80px;}
+.cmp-row.bad{border-color: var(--warning);}
+.cmp-row.focus{box-shadow: 0 0 0 2px var(--accent, var(--positive));}
+.cmp-d{display: grid; gap: 6px; align-content: start; font-size: 14px;}
+.cmp-d .pill{justify-self: start;}
+.cmp-cell{display: grid; gap: 1px; padding: 6px 8px; border-radius: 6px; background: var(--raised); font-size: 13px; line-height: 18px; white-space: pre-wrap; overflow-wrap: anywhere;}
+.cmp-cell + .cmp-cell{margin-top: 6px;}
+.cmp-ref{font-size: 11px; color: var(--muted); letter-spacing: .3px;}
+.cmp-miss{background: var(--pill-warning-bg); color: var(--pill-warning-ink); border-radius: 3px; padding: 0 3px;}
+.cmp-ours .day-list li{padding: 6px 8px;}
+.cmp-extra{padding: 8px 12px;}
+.cmp-extra li{font-size: 13px; padding: 3px 0;}
+.src-line{margin: 6px 0 0; font-size: 12px; line-height: 17px; color: var(--muted);}
+@media (max-width: 720px){
+  .cmp-head{display: none;}
+  .cmp-row{grid-template-columns: 1fr; gap: 8px;}
+  .cmp-d{grid-auto-flow: column; justify-content: space-between; align-items: center;}
+  .cmp-src::before{content: "Your file"; display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 4px;}
+  .cmp-ours::before{content: "Charted"; display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 4px;}
+}

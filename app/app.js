@@ -1222,7 +1222,7 @@ function heroHtml() {
   const todayEv = schedFor(isoD(t)); const tm = addDays(t, 1); const tomEv = schedFor(isoD(tm));
   const late = new Date().getHours() >= 15;
   const tomSec = tomEv.length && (late || !todayEv.length) ? `<h2 class="label">Tomorrow, ${WDL[tm.getDay()]}</h2><ul class="day-list">${tomEv.map(evRow).join("")}</ul>` : "";
-  const daySec = todayEv.length || tomSec ? (late && tomSec ? tomSec : "") + (todayEv.length ? `<h2 class="label">${late && tomSec ? "Earlier today" : `Today on ${esc(rotShort(todayEv[0].sched))}`}</h2><ul class="day-list${late && tomSec ? " is-past" : ""}">${todayEv.map(evRow).join("")}</ul>` : "") + (!late && tomSec ? tomSec : "")
+  const daySec = todayEv.length || tomSec ? (late && tomSec ? tomSec : "") + (todayEv.length ? `<h2 class="label">${late && tomSec ? "Earlier today" : `Today on ${esc(rotShort(todayEv[0].sched))}`}</h2><ul class="day-list${late && tomSec ? " is-past" : ""}">${todayEv.map(evRow).join("")}</ul>${srcLine(todayEv[0].sid, isoD(t))}` : "") + (!late && tomSec ? tomSec : "")
     : cur && (state.scheds || []).some((x) => x.from <= isoD(t) && x.to >= isoD(t)) ? `<p class="hero-hint">Nothing on your ${esc(rotShort(cur.name))} schedule today.</p>`
     : cur ? `<p class="hero-hint">Add your ${esc(rotShort(cur.name))} schedule to see each day here. <a class="link" href="#schedule" data-act="go-drop">Add schedule</a></p>`
     : !(state.rotations || []).length ? `<p class="hero-hint">Pick your clerkship track and your year fills in. <a class="link" href="#schedule" data-act="go-track">Choose a track</a></p>` : "";
@@ -1855,6 +1855,12 @@ function customTrackPanel(opts) {
 }
 
 /* ----- your clerkship's own schedule, dropped in as a spreadsheet ----- */
+/* under the day: where it came from, and one tap to see the original cell */
+function srcLine(sid, iso) {
+  const s = (state.scheds || []).find((x) => x.id === sid); if (!s || s.sample) return "";
+  const c = schedCheck(s); const miss = c ? (c.byDay[iso] || []).length : 0; const refs = s.src && s.src[iso] ? s.src[iso].map((x) => x.ref).join(", ") : "";
+  return `<p class="src-line">${c ? (miss ? `<span class="warn-t">${plural(miss, "line")} from your file didn't come through.</span>` : `From ${esc(s.file || "your file")}${refs ? `, ${esc(refs)}` : ""}: every line matches.`) : `From ${esc(s.file || "your file")}.`} <button class="link" data-act="sched-check" data-id="${esc(s.id)}" data-date="${esc(iso)}">See the original</button></p>`;
+}
 function schedFor(iso) { return (state.scheds || []).flatMap((s) => (s.days && s.days[iso] || []).map((e) => ({ ...e, sched: s.name, sid: s.id }))); }
 function schedItems() {
   const out = [];
@@ -1908,17 +1914,50 @@ async function readDroppedFile(file) {
       const nm = (state.profile.myName || state.profile.name || "").trim().toLowerCase();
       const hits = nm ? ds.people.filter((p) => p.name.toLowerCase() === nm || p.name.toLowerCase().split(" ")[0] === nm.split(/\s+/)[0]) : [];
       const me = ds.people.length === 1 ? ds.people[0] : hits.length === 1 ? hits[0] : null;
-      ui.drop = { status: me ? "review" : "pick", file: file.name, guess: g, from: ds.from, to: ds.to, names: me ? [] : ds.people.map((p) => p.name), people: me ? null : ds.people, person: me ? { name: me.name, days: me.days } : null };
+      ui.drop = { status: me ? "review" : "pick", file: file.name, guess: g, from: ds.from, to: ds.to, skipped: ds.skipped || [], names: me ? [] : ds.people.map((p) => p.name), people: me ? null : ds.people, person: me ? { name: me.name, days: me.days, src: me.src, unread: me.unread } : null };
       render(); return;
     }
     throw new Error("No schedule found in that file. Drop your clerkship's weekly schedule or the school's track schedule (.xlsx or .csv).");
   } catch (e) { ui.drop = { status: "error", file: file.name, error: e.message || "Couldn't read that file." }; render(); }
 }
+/* ----- trust: every schedule can be checked against the file it came from, cell by cell ----- */
+function schedCheck(s) {
+  if (!s || !s.src || !Object.keys(s.src).length) return null;
+  const v = SHEETS.verify(s.src, s.days || {});
+  return { ...v, unread: (s.unread || []).length, skipped: (s.skipped || []).length, issues: v.missing + (s.unread || []).length + (s.skipped || []).length };
+}
+function checkLine(s, id) {
+  const c = schedCheck(s); const open = ui.chk && ui.chk.id === id;
+  const btn = `<button class="link" data-act="sched-check" data-id="${esc(id)}">${open ? "Hide the comparison" : c && c.issues ? "Review them side by side" : "Compare with your file"}</button>`;
+  if (!c) return s.sample ? "" : `<p class="cmp-line"><span class="pill">Not checked</span> Added before line-by-line checking. Drop ${esc(s.file || "the file")} again to check every cell.</p>`;
+  const bits = [c.missing ? plural(c.missing, "line") + " didn't come through" : "", c.unread ? plural(c.unread, "cell") + (c.unread === 1 ? " has" : " have") + " no date" : "", c.skipped ? plural(c.skipped, "week") + " had no row of dates" : ""].filter(Boolean);
+  return c.issues && !s.checked ? `<p class="cmp-line"><span class="pill warn">${plural(c.issues, "thing")} to review</span> ${esc(bits.join(", "))}. ${btn}</p>`
+    : c.issues ? `<p class="cmp-line"><span class="pill pos">Reviewed</span> ${esc(bits.join(", "))}; you reviewed them ${fmtShort(parseD(s.checked))}. ${btn}</p>`
+    : `<p class="cmp-line"><span class="pill pos">Matches your file</span> All ${c.lines} lines from your rows are in${s.checked ? `, checked by you ${fmtShort(parseD(s.checked))}` : ""}. ${btn}</p>`;
+}
+function checkPanel(s) {
+  const c = schedCheck(s); if (!c) return "";
+  const only = ui.chk && ui.chk.only; const focus = ui.chk && ui.chk.date;
+  const dates = [...new Set([...Object.keys(s.src || {}), ...Object.keys(s.days || {})])].sort();
+  const rows = dates.filter((d) => !only || c.byDay[d].length || d === focus).map((d) => {
+    const miss = c.byDay[d] || []; const dt = parseD(d);
+    const src = (s.src[d] || []).map((x) => `<div class="cmp-cell"><span class="cmp-ref num">${esc(x.ref)}</span>${x.text.split(/\n+/).map((ln) => `<span class="${miss.some((m) => m.ref === x.ref && m.text === ln.trim()) ? "cmp-miss" : ""}">${esc(ln)}</span>`).join("")}</div>`).join("") || `<span class="muted">Empty</span>`;
+    const ours = (s.days[d] || []).length ? `<ul class="day-list">${s.days[d].map(evRow).join("")}</ul>` : `<span class="muted">Nothing</span>`;
+    return `<div class="cmp-row${miss.length ? " bad" : ""}${d === focus ? " focus" : ""}" id="chk-${d}"><div class="cmp-d"><b>${WD[dt.getDay()]} ${fmtShort(dt)}</b>${miss.length ? `<span class="pill warn">${plural(miss.length, "line")} missing</span>` : `<span class="pill pos">Match</span>`}</div><div class="cmp-src">${src}</div><div class="cmp-ours">${ours}</div></div>`;
+  }).join("");
+  const extra = (s.unread || []).length || (s.skipped || []).length ? `<div class="cmp-extra"><h3 class="sub-h">In your file but not on any day</h3><ul class="plain">${(s.unread || []).map((u) => `<li><span class="cmp-ref num">${esc(u.ref)}</span> ${esc(u.text)} <span class="muted">· no date above this cell</span></li>`).join("")}${(s.skipped || []).map((k) => { const g = k.guessed ? k.guessed.split("/").map(parseD) : null; return `<li><span class="cmp-ref num">${esc(k.ref)}</span> ${esc(k.label)} <span class="muted">· ${g ? `no row of dates, so Charted read it as ${fmtShort(g[0])} to ${fmtShort(g[1])}, the week after the one above. Check those days.` : `${plural(k.cells, "filled cell")} but no row of dates under it, so none of it was read`}</span></li>`; }).join("")}</ul><p class="hint">Add these yourself on the Calendar, or fix the dates in the file and drop it again.</p></div>` : "";
+  const saved = s.id !== "drop";
+  return `<div class="cmp" role="region" aria-label="${esc(s.name)} compared with ${esc(s.file || "your file")}">
+    <div class="cmp-head"><p><b>Your file</b> <span class="muted">${esc(s.file || "")}, exactly as written</span></p><p><b>Charted</b> <span class="muted">what shows on Today and the Calendar</span></p></div>
+    <div class="cmp-tools"><label class="dz-check"><input type="checkbox" data-act="chk-only" ${only ? "checked" : ""}> Only days with something to review</label>${saved ? `<button class="btn small" data-act="chk-ok" data-id="${esc(s.id)}">${s.checked === isoD(today()) ? "Checked today" : c.issues ? "I've reviewed these" : "I've checked it: matches"}</button>` : ""}</div>
+    ${rows || `<p class="muted">Every day matches.</p>`}${extra}
+  </div>`;
+}
 function dropPanel() {
   const d = ui.drop || { status: "idle" }; const sc = state.scheds || [];
   const list = sc.length ? `<ul class="rows plain">${sc.map((s) => {
     const n = Object.keys(s.days || {}).length; const ex = Object.entries(s.days || {}).flatMap(([k, evs]) => evs.filter((e) => e.kind === "exam").map((e) => `${e.title} ${fmtShort(parseD(k))}`));
-    return `<li><div class="what"><span class="t">${esc(s.name)}${s.block ? `, block ${esc(s.block)}` : ""}${s.sample ? " (sample)" : ""}</span><small class="num">${fmtShort(parseD(s.from))} to ${fmtShort(parseD(s.to))} · ${plural(n, "day")}${ex.length ? ` · ${esc(ex.join(", "))}` : ""}</small></div><div class="tail"><button class="btn quiet small" data-act="sched-del" data-id="${esc(s.id)}">Remove</button></div></li>`;
+    return `<li><div class="what"><span class="t">${esc(s.name)}${s.block ? `, block ${esc(s.block)}` : ""}${s.sample ? " (sample)" : ""}</span><small class="num">${fmtShort(parseD(s.from))} to ${fmtShort(parseD(s.to))} · ${plural(n, "day")}${ex.length ? ` · ${esc(ex.join(", "))}` : ""}</small>${checkLine(s, s.id)}</div><div class="tail"><button class="btn quiet small" data-act="sched-del" data-id="${esc(s.id)}">Remove</button></div></li>${ui.chk && ui.chk.id === s.id ? `<li class="cmp-li">${checkPanel(s)}</li>` : ""}`;
   }).join("")}</ul>` : "";
   let body = "";
   if (d.status === "reading") body = `<div class="dz busy" aria-live="polite">Reading ${esc(d.file)}…</div>`;
@@ -1933,6 +1972,8 @@ function dropPanel() {
     const offer = tm.length === 1 && tm[0] !== pr.track;
     body = `<div class="dz-msg"><p><b>${esc(d.person.name)}</b>: ${plural(evs.length, "day")} from ${fmtShort(parseD(d.from))} to ${fmt(parseD(d.to))}${calls ? `, ${plural(calls, "call")}` : ""}.</p>
       ${ex.length ? `<p class="muted">Exams and due dates: ${esc(ex.join(" · "))}</p>` : ""}
+      ${checkLine({ src: d.person.src, days: d.person.days, unread: d.person.unread, skipped: d.skipped, file: d.file }, "drop")}
+      ${ui.chk && ui.chk.id === "drop" ? checkPanel({ id: "drop", name: clerk || "This schedule", src: d.person.src, days: d.person.days, unread: d.person.unread, skipped: d.skipped, file: d.file }) : ""}
       <div class="dz-row"><div class="field"><label for="drop-clerk">Clerkship</label><select id="drop-clerk" data-act="drop-clerk"><option value="">Choose…</option>${[...CLERKSHIPS, "Elective"].map((n) => `<option ${n === clerk ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>
       ${offer ? `<label class="dz-check"><input type="checkbox" id="drop-track" checked> ${esc(clerk)} in these dates matches <b>Track ${esc(tm[0])}</b>. Set it and fill in the rest of my year.</label>` : tm.length === 1 ? `<p class="muted">Matches your Track ${esc(tm[0])}.</p>` : ""}</div>
       <div class="dz-acts"><button class="btn small" data-act="drop-reset">Cancel</button><button class="btn primary small" data-act="drop-add" ${clerk ? "" : "disabled"}>Add to my calendar</button></div></div>`;
@@ -1946,7 +1987,7 @@ function addDroppedSchedule() {
   const d = ui.drop; if (!d || !d.person) return;
   const clerk = (document.getElementById("drop-clerk") || {}).value || d.clerk || d.guess.clerkship; if (!clerk) return;
   const setTrack = document.getElementById("drop-track"); const tm = tracksMatching(clerk, d.from, d.to);
-  const s = { id: "s" + Date.now().toString(36), name: clerk, block: d.guess.block || "", from: d.from, to: d.to, file: d.file, who: d.person.name, days: d.person.days };
+  const s = { id: "s" + Date.now().toString(36), name: clerk, block: d.guess.block || "", from: d.from, to: d.to, file: d.file, who: d.person.name, days: d.person.days, src: d.person.src || {}, unread: d.person.unread || [], skipped: d.skipped || [], added: isoD(today()) };
   state.scheds = (state.scheds || []).filter((x) => !x.sample && !(x.name === s.name && x.from === s.from)).concat([s]);
   ui.drop = { status: "idle" };
   if (setTrack && setTrack.checked && tm.length === 1) applyTrack(tm[0]);
@@ -2514,8 +2555,10 @@ document.addEventListener("click", (ev) => {
     case "tracks-reset": state.customTracks = null; persist(); render(); toast("Using the built-in AY2026-27 schedule."); break;
     case "tracks-use": if (ui.drop && ui.drop.tracks) { state.customTracks = ui.drop.tracks; persist(); toast(`${ui.drop.tracks.label} loaded. Pick your track.`); ui.drop = { status: "idle" }; render(); document.getElementById("track")?.scrollIntoView({ block: "start" }); } break;
     case "drop-reset": ui.drop = { status: "idle" }; render(); break;
-    case "drop-me": { const p = ui.drop && ui.drop.people && ui.drop.people[+t.dataset.i]; if (p) { ui.drop = { ...ui.drop, status: "review", person: { name: p.name, days: p.days }, people: null, names: [] }; render(); } break; }
-    case "drop-add": addDroppedSchedule(); break;
+    case "drop-me": { const p = ui.drop && ui.drop.people && ui.drop.people[+t.dataset.i]; if (p) { ui.drop = { ...ui.drop, status: "review", person: { name: p.name, days: p.days, src: p.src, unread: p.unread }, people: null, names: [] }; render(); } break; }
+    case "drop-add": addDroppedSchedule(); ui.chk = null; break;
+    case "sched-check": { const id = t.dataset.id; ui.chk = ui.chk && ui.chk.id === id && !t.dataset.date ? null : { id, date: t.dataset.date || "", only: false }; if (ui.view !== "schedule" && id !== "drop") { location.hash = "schedule"; } else render(); if (t.dataset.date) setTimeout(() => document.getElementById("chk-" + t.dataset.date)?.scrollIntoView({ block: "center" }), 60); break; }
+    case "chk-ok": { const sc = (state.scheds || []).find((x) => x.id === t.dataset.id); if (sc) { sc.checked = isoD(today()); persist(); render(); toast(`${rotShort(sc.name)} schedule marked as checked against ${sc.file || "your file"}.`); } break; }
     case "sched-del": { const sc = (state.scheds || []).find((x) => x.id === t.dataset.id); if (sc) removeWithUndo("scheds", sc.id, `the ${rotShort(sc.name)} schedule`); break; }
     case "go-drop": ev.preventDefault(); go("schedule"); setTimeout(() => focusSection("drop-sched"), 60); break;
     case "go-track": ev.preventDefault(); go("schedule"); setTimeout(() => focusSection(state.profile.track === "custom" ? "custom-track" : "track"), 60); break;
@@ -2597,6 +2640,7 @@ document.addEventListener("click", (ev) => {
 document.addEventListener("change", (ev) => {
   const t = ev.target;
   if (modEvent("change", ev)) return;
+  if (t.matches("[data-act='chk-only']")) { if (ui.chk) ui.chk.only = t.checked; render(); return; }
   if (t.matches("[data-act='req-status']")) { state.req[t.dataset.id] = t.value; becomeMine(); persist(); render(); return; }
   if (t.matches("[data-prof]")) {
     const k = t.dataset.prof; let v = t.value;
