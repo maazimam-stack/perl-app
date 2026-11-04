@@ -1969,7 +1969,7 @@ function dropPanel() {
     const evs = Object.entries(d.person.days).sort(); const ex = evs.flatMap(([k, es]) => es.filter((e) => e.kind === "exam" || e.kind === "due").map((e) => `${e.title}, ${WD[parseD(k).getDay()]} ${fmtShort(parseD(k))}`));
     const calls = evs.reduce((n, [, es]) => n + es.filter((e) => e.kind === "call").length, 0);
     const tm = tracksMatching(clerk, d.from, d.to); const pr = state.profile;
-    const offer = tm.length === 1 && tm[0] !== pr.track;
+    const offer = tm.length === 1 && tm[0] !== pr.track && pr.track !== "custom"; /* never overwrite a year the student built by hand */
     body = `<div class="dz-msg"><p><b>${esc(d.person.name)}</b>: ${plural(evs.length, "day")} from ${fmtShort(parseD(d.from))} to ${fmt(parseD(d.to))}${calls ? `, ${plural(calls, "call")}` : ""}.</p>
       ${ex.length ? `<p class="muted">Exams and due dates: ${esc(ex.join(" · "))}</p>` : ""}
       ${checkLine({ src: d.person.src, days: d.person.days, unread: d.person.unread, skipped: d.skipped, file: d.file }, "drop")}
